@@ -53,4 +53,40 @@ ready = ->
             html: true,
             animation: true,
             content: 'Start: ' + event.start.format("HH:mm") + '<br />End: ' + event.end.format("HH:mm") + '<br />Description: ' + event.description + '<br /> <a id="post_shift" href= "post_shift/" class= "post" role ="button">Post Shift</a> |
-            <a href="trade_with_collegue/" class="collegue_trade">Trade With Collegue</a
+            <a href="trade_with_collegue/" class="collegue_trade">Trade With Collegue</a>'
+            template:'<div class="popover" role="tooltip"><div class="arrow"></div><h3 class="popover-title" ></h3><div class="popover-content">hello</div></div> ' 
+            container: 'body'
+
+
+        element.text(" ").css('height', '10px')
+
+    eventDataTransform: (eventData, startParam) ->
+      s = DateConvert(eventData.start)
+      f = DateConvert(eventData.end)
+      
+      eventData
+      
+    eventDrop: (event, dayDelta, minuteDelta, allDay, revertFunc) ->
+      updateEvent(event);
+
+    eventResize: (event, dayDelta, minuteDelta, revertFunc) ->
+      updateEvent(event);
+
+    eventClick: (calEvent, jsEvent, view) -> 
+        $('.post').on "click", -> 
+          $(this).prop('href', "/post_shift/" + calEvent.id)
+
+        $('.collegue_trade').on "click", ->
+          $(this).prop 'href', 'trade_with_collegue/' + calEvent.id
+              
+  ## Private Msging Testing will be removed later ##
+  PrivateMsg = new Ractive
+    el: "#template2Wrapper"
+    template: '#template2'
+  
+   $('#private_msg').on 'submit', (event) ->
+    SocketApp.sendPrivateMessage(event)
+  
+
+$(document).ready(ready)
+$(document).on('page:load', ready)
