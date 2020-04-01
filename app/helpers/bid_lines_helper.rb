@@ -1,0 +1,2 @@
+module BidLinesHelper
+end
