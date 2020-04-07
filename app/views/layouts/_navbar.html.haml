@@ -1,0 +1,26 @@
+#nav-bar.navbar.navbar-default.navbar-fixed-top
+  .container-fluid
+    .navbar-header
+    .collapse.navbar-collapse#bs-example-navbar-collapse-1
+      %ul.nav.navbar-nav.navbar-right
+        -if employee_signed_in?
+          %li
+            = link_to profile_path(current_employee) do
+              %span.glyphicon.glyphicon-cog
+              Account 
+        - if employee_signed_in?      
+          %li.dropdown 
+            %a.dropdown-toggle{:href => '#',"aria-expanded" => "false", "aria-haspopup" => "true", "data-toggle" => "dropdown", :href => "#", :role => "button"}
+              %span.glyphicon.glyphicon-envelope 
+
+            %ul.dropdown-menu{"aria-labelledby" => "dropdownMenu2"}
+              %li
+                %a
+                  /= image_tag avatar_url(current_employee), class: 'avatar30'
+                  Woodson Delhia
+                  %br 
+                  lorem ipsum valsadsa dfsdfs dsadas...
+          %li.dropdown
+            %a.dropdown-toggle{"aria-expanded" => "false", "aria-haspopup" => "true", "data-toggle" => "dropdown", :href => "#", :role => "button"}
+              /= image_tag avatar_url(current_employee), class: "avatar30"
+       

@@ -8,4 +8,33 @@
             %em 
               = "#{@today_task.position} #{@today_task.start_time.to_s(:time)} - #{@today_task.finish_time.to_s(:time)}"
         -else
+          %h1 You are Off today!
+      .panel-footer
+        Schedule Task 
+  .col-md-5#trades-info{"data-uri"=>"#{request.host}:#{ request.port}/websocket"}
+    = render 'trade_center_info'
+/ ---End 
+
+.row
+  .col-md-5.col-md-push-7
+    .row
+      .col-md-12
+        #calendar.panel.panel-default
+          .panel-heading<>
+            My Calendar
+          .panel-body
+            .user_full_calendar
+      .col-md-12
+        .panel.panel-default
+          .panel-heading<>
+
+          .panel-body
+          = render 'postings'   
+
+  .col-md-7.col-md-pull-5
+    .panel.panel-default
+      .panel-heading.text-center
+        Recent Posts
+      .panel-body
+        = render 'post_form'
         
