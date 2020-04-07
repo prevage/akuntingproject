@@ -1,0 +1,8 @@
+%h1 BidLines#index
+%p Find me in app/views/bid_lines/index.html.haml
+
+- @lines.each do |line|
+  - line = line.lines.deep_symbolize_keys
+  %ul
+    %li 
+      = line[:line_number]

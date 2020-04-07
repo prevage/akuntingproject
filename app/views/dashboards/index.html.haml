@@ -1,0 +1,11 @@
+/ ---Start of Schedule Tak
+.row
+  .col-md-7
+    .panel.panel-default
+      .panel-body.text-center
+        -if work_today?(@today_task)
+          %h1
+            %em 
+              = "#{@today_task.position} #{@today_task.start_time.to_s(:time)} - #{@today_task.finish_time.to_s(:time)}"
+        -else
+        

@@ -1,0 +1,47 @@
+<div id="templateWrapper">
+  <script id="template" type="text/ractive">
+    <form data-uri="<%= request.host %>:<%= request.port %>/websocket" id="posting" on-submit='post'>
+      <textarea class="form-control counted" id="message" value='{{content}}' placeholder='Share something...' rows="4" style="margin-bottom:10px;" required></textarea>
+      <h6 class="pull-right" id="counter">320 characters remaining</h6>
+      <button class="btn btn-info" id="new_post" type="submit">Post New </button>
+
+    </form>
+    
+    <ul class="list-group all_posts">
+      {{#list:i}}
+    <li class='list-group-item'>
+        <span class="dropdown pull-right">
+          <span class="dropdown-toggle" id="dropdownMenu1" data-toggle="dropdown" type="button" aria-haspopup="true" aria-expanded="true">
+            <span class="caret"></span>
+          </span>
+          
+            <ul class="dropdown-menu" role="menu" aria-labelledby="dropdownMenu1">
+              <li><a href="#">Action</a></li>
+              <li><a href="#">Another action</a></li>
+              <li><a href="#">Something else here</a></li>
+              {{#if this.isUser}}
+                <li><a on-click='remove:{{i}}' class="btn-xs btn-danger btn-block">Delete Post</a></li>
+              {{/if}}
+            </ul>
+        </span>
+      <div class="media">
+          <div class="media-left">
+            <a href="#">
+                  <%= image_tag("http://static.nfl.com/static/content/public/static/img/fantasy/transparent/200x200/WOO661523.png?01AD=3n6mqKw_qL00dpnfbGHt_psO6gNStPFmrhrEnOUuVho8CHdcw_9g8Ow&01RI=0D206B0E41C6CD5&01NA=",class: "media-object avatar50") %>
+          </div>
+
+          <div class="media-body">
+            <h4 class="media-heading"> {{this.user.fname}} {{this.user.lname}}</h4>
+            <p class="date-time"> {{this.created_at}} ago</p>
+              {{ this.content }}
+          </div>
+
+      </div>
+    </li>
+    {{/list}}
+    </ul>
+  </script>
+  <script type="text/javascript">
+        var EmpId = <%= profile.id %>
+  </script>
+</div>

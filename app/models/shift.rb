@@ -19,4 +19,22 @@ class Shift < ActiveRecord::Base
     end
     
     def post!
-        self.update_attributes!(:posted =
+        self.update_attributes!(:posted => true)
+    end
+
+    def unpost!
+        self.update_attributes!(:posted => false)
+    end 
+
+    def unpartial!
+      self.update_attributes!(:partial => false)
+    end
+
+    def is_partial?(original_shift)
+      if start_time.eql?(original_shift.start_time) && finish_time.eql?(original_shift.finish_time)
+        return false
+      else
+        return true
+      end
+    end       
+end

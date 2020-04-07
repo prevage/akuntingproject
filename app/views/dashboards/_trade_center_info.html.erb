@@ -1,0 +1,28 @@
+<div id="TradeWidgetWrapper">
+<script id="tradeWidget" type="text/ractive">
+  <div class="panel panel-default">
+    <div class="panel-heading">
+      Trade Center Information 
+      <span class="pull-right">
+        <%= link_to(trade_center_info_path, remote: true) do %>
+          <div class="glyphicon glyphicon-refresh"></div>
+        <% end %>
+      </span>
+    </div>
+    <div class="panel-body">
+      <p>
+        Shift For Pick Up:
+        <strong>{{pickUpShifts}}</strong>
+      </p>
+      <p>
+        Available Collegue For Today: 
+        <strong>{{availableEmp}}</strong>
+      </p>
+      <p>
+        Pending Request:
+        <strong>0</strong>
+      </p>
+    </div>
+  </div>
+</script>
+</div>
