@@ -23,4 +23,27 @@
           %li.dropdown
             %a.dropdown-toggle{"aria-expanded" => "false", "aria-haspopup" => "true", "data-toggle" => "dropdown", :href => "#", :role => "button"}
               /= image_tag avatar_url(current_employee), class: "avatar30"
-       
+              = "#{profile.fname} #{profile.lname}" 
+              %span.caret
+
+            %ul.dropdown-menu{"aria-labelledby" => "dropdownMenu1"}
+              %li
+                %a{:href => "#"}
+                  Profile Setting
+              %li.btn-xs.btn-danger.btn-block
+                = link_to signout_path, {:method => :delete} do
+                  %span.glyphicon.glyphicon-log-out
+                  Logout
+            /  = image_tag avatar_url(current_employee), class: "avatar30"
+            / = link_to signout_path, {:method => :delete} do
+            /   %span.glyphicon.glyphicon-log-out
+            /   Logout
+        -else     
+          %li
+            = link_to signin_path do
+              %span.glyphicon.glyphicon-log-in
+              Login
+          %li
+            = link_to signup_path do
+              %span.glyphicon.glyphicon-user
+              Sign Up

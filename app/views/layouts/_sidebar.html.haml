@@ -1,0 +1,98 @@
+
+%aside#sidebar-wrapper
+  #sidebar-brand
+    = link_to 'eSTACenter', '#'
+    %button.navbar-toggle.collapsed{"aria-expanded" => "false", "data-target" => "#bs-example-navbar-collapse-1", "data-toggle" => "collapse", :type => "button"}
+      %span.sr-only Toggle navigation
+      %span.icon-bar
+        %span.icon-bar
+        %span.icon-bar
+      %a.navbar-brand{:href => "#"}><
+        STA
+        %small>< Center
+  .sidebar-nav 
+    %header.sidebar-header
+      .profile-avatar.inner-inline
+        /= link_to image_tag(avatar_url(current_employee), class: "avatar40")
+      .profile-body.inner-inline
+        .links
+          = link_to "Profile -"
+          = link_to "Logout"
+        .profile-name
+          = "#{profile.fname} #{profile.lname}" 
+    %ul.nav
+      %li
+        = link_to dashboard_path do
+          %span.glyphicon.glyphicon-dashboard
+            Dashboard 
+      %li
+        %a#trade-center{:href => "#"}
+          %span.glyphicon.glyphicon-transfer>
+            Trade Center 
+        %ul#trade.nav.nav-pills.nav-stacked<
+          %li{:style => "padding-left: 8px; padding-right: 8px;"}
+            = link_to "Pick Up", posted_shifts_path
+          %li{:style => "padding-left: 8px; padding-right: 8px;"}
+            = link_to 'Availability', availability_path
+
+          %li{:style => "padding-left: 8px; padding-right: 8px;"}
+            = link_to 'My Pending Requests', pending_requests_path
+
+          %li{:style => "padding-left: 8px; padding-right: 8px;"}
+            = link_to 'Trade Requests', trade_requests_path
+      %li
+        = link_to employees_path do
+          %span.glyphicon.glyphicon-user
+            Employees
+      %li
+        = link_to calendar_path do
+          %span.glyphicon.glyphicon-calendar
+            Calendar
+      %li
+        %a{:href => "https://my.aircanada.ca", :target => "_blank"}
+          %span.glyphicon.glyphicon-link 
+            Aeronet
+      %li
+        %a{:href => "http://aircanada.ca", :target => "_blank"}
+          %span.glyphicon.glyphicon-plane 
+            Air Canada
+:javascript
+  var employee = #{profile.id}
+/ .container-fluid.profile
+/   .row
+/     .col-md-3
+/       .panel.panel-default.logo
+/         .panel-body
+/           .profile-pic
+/             = image_tag avatar_url(current_employee)
+/           %h4 Welcome, #{profile.fname} #{profile.lname}
+
+/       .panel.panel-default
+/         .panel-heading Menu
+/         .panel-body
+/           %ul.nav.nav-pills.nav-stacked
+/             %li
+/               = link_to "News", news_feeds_path
+/             %li
+/               %a#trade-center{:href => "#"} Trade Center
+/               %ul#trade.nav.nav-pills.nav-stacked
+/                 %li{:style => "padding-left: 8px; padding-right: 8px;"}
+/                   = link_to "Pick Up", posted_shifts_path
+/                 %li{:style => "padding-left: 8px; padding-right: 8px;"}
+/                   = link_to 'Availability', availability_path
+
+/                 %li{:style => "padding-left: 8px; padding-right: 8px;"}
+/                   = link_to 'My Pending Requests', pending_requests_path
+
+/                 %li{:style => "padding-left: 8px; padding-right: 8px;"}
+/                   = link_to 'Trade Requests', trade_requests_path
+/             %li
+/               = link_to "Calendar", calendar_path
+/             %li
+/               %a{:href => "https://my.aircanada.ca"} Aeronet
+/             %li
+/               %a{:href => "http ://aircanada.ca"} Air Canada
+    
+    
+/     = yield
+/         

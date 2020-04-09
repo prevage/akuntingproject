@@ -1,0 +1,44 @@
+.col-lg-2
+.col-lg-8
+  .panel.panel-default
+    .panel-heading
+      Employees
+      %span.badge
+        = @emps.count
+    .panel-body
+      .searchbar
+        .input-group
+          .input-group-btn.search-panel
+            %button.btn.btn-default.dropdown-toggle{"data-toggle" => "dropdown", :type => "button"}
+              %span#search_concept Filter by
+              %span.caret
+            %ul.dropdown-menu{:role => "menu"}
+              %li
+                %a{:href => "#contains"} Contains
+              %li
+                %a{:href => "#its_equal"} It's equal
+              %li
+                %a{:href => "#greather_than"} Greather than >
+              %li
+                %a{:href => "#less_than"} Less than
+              %li.divider
+              %li
+                %a{:href => "#all"} Anything
+          %input#search_param{:name => "search_param", :type => "hidden", :value => "all"}
+            %input.form-control{:name => "x", :placeholder => "Search for your collegues", :type => "text"}
+              %span.input-group-btn
+                %button.btn.btn-default{:type => "button"}
+                  %span.glyphicon.glyphicon-search
+      - for emp in @emps
+        .well.employee-well><
+          = image_tag(avatar_url(emp), class: "avatar100")
+          .employee-info
+            %a 
+              %h4><
+                = "#{emp.profile.fname} #{emp.profile.lname}"
+            %em
+              %p 
+                Membership Number: 202899
+              %p 
+                = "Member Since: #{emp.created_at.to_date.to_s(:long)}"
+.col-lg-2

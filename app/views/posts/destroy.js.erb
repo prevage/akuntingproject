@@ -1,0 +1,3 @@
+$("a[data-remote]").bind('ajax:success', function() {  
+  $(this).parents().closest('li.list-group-item').fadeOut("slow").remove();
+}); 

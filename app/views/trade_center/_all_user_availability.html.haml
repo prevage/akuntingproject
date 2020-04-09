@@ -1,0 +1,22 @@
+
+%h5.text-center 
+  Hello. Some text here
+  %table.table.table-striped#tblGrid
+    %thead#tblHead
+      %tr
+        %th.text-center  Employee Name
+        %th.text-center  Start Time
+        %th.text-center  Finish Time 
+    %tbody
+      - if !@users.empty?
+        - for user in @users
+          %tr
+            %td<> 
+              = link_to "#{user.profile.fname} #{user.profile.lname}", "#"
+            %td<>
+              = user.start_time.to_s(:time)
+            %td<>
+              = user.finish_time.to_s(:time)
+      - else
+        %tr
+          %td{:colspan => 3} No One Available.

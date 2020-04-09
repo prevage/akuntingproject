@@ -1,0 +1,5 @@
+console.log("hello");
+$("textarea#post_content").val("");
+html = "<%= j render '/dashboards/post', :locals => {:post => @post} %>"  	
+$("ul.all_posts").prepend(html).slideDown("slow");
+delete html

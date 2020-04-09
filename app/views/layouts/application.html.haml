@@ -1,0 +1,33 @@
+!!!
+%html
+  %head
+    %meta{:content => "text/html; charset=UTF-8", "http-equiv" => "Content-Type"}
+    %title
+      = "#{params[:controller]}"
+
+    = stylesheet_link_tag    'application', media: 'all', 'data-turbolinks-track' => true
+    = javascript_include_tag 'application', 'data-turbolinks-track' => true
+    = controller_assets
+    = csrf_meta_tags
+  %body
+    #page-content
+      / Sidebar 
+      -if employee_signed_in?
+        = render 'layouts/sidebar'
+      
+      / Navbar
+      = render 'layouts/navbar'
+      
+      #wrapper
+        - if flash
+          - flash.each do |level, message|
+            %div{:class => "alert #{flash_level(level)}"}
+              %button.close{:"data-dismiss" => 'alert'}= "×"
+              = message
+  
+        = yield
+
+      = render 'layouts/footer'
+      - if employee_signed_in?
+        #user{"data-name" => "#{profile.fname} #{profile.lname}:#{profile.id}"}
+
