@@ -6,4 +6,10 @@
 
   .form-inputs
     = f.input :position, readonly: true
-    = f.input :start_time, as: :string, wrapper: :time_wrapper, placeholder: 'e.g: #{Time.now}'
+    = f.input :start_time, as: :string, wrapper: :time_wrapper, placeholder: 'e.g: #{Time.now}', input_html: {:value => f.object.start_time.to_s(:time) }
+    = f.input :finish_time, as: :string, wrapper: :time_wrapper, placeholder: 'e.g: #{Time.now}', input_html: {:value => f.object.finish_time.to_s(:time) }
+    = f.input :original_id, as: :hidden, input_html: { :value => "#{@shift.id}" }
+    - if current_page?(action: 'trade_with_collegue')
+      = f.input  :collegue_id, collection: Employee.where.not(:id => current_employee.id).map { |u| [u.email, u.id]}, :include_blank => "Select a collegue"
+  .form-actions.pull-right
+    = f.button :submit, value: "Post Shift", class: 'btn btn-danger'

@@ -1,0 +1,30 @@
+.col-md-6
+  .panel.panel-defautlt.calendar
+    .panel-heading
+      %h3 My Pending Request
+    .panel-body
+      %table.table.table-striped
+        %thead
+          %tr
+            %th To
+            %th Date
+            %th Time
+            %th Position
+            %th Selection
+        %tbody
+          - if @pending_requests.empty?
+            %p No pending request.
+          - else
+            - for shift in @pending_requests
+              %tr< 
+                %td<
+                  = "#{shift.collegue.fname} #{shift.collegue.lname}"
+                %td<
+                  = shift.date.to_s(:long)
+                %td<
+                  = "#{shift.start_time.to_s(:time)} - #{shift.finish_time.to_s(:time)}"
+                %td<
+                  = shift.position
+                %td<
+                  - if shift.profile_id == profile.id 
+                    = link_to 'Cancel', cancel_shift_path(shift), class: 'btn btn-danger  btn-xs', method: :post

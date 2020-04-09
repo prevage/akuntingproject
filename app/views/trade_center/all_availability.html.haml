@@ -1,0 +1,23 @@
+.col-md-9
+  .panel.panel-default.calendar
+    .panel-heading
+      Availability Calendar
+      = link_to "Set Availability", user_availability_path, class: 'btn-md btn-primary pull-right'
+    .panel-body
+      %p
+        %h4.text-center Click on a date to see available employees.
+      #calendar.availability_calendar
+      #availability_modal.modal.fade{ :tabindex => "-1", :role => "dialog", 
+                                 :aria => {:labelledby => "availability_modal", :hidden => true} }
+        .modal-dialog
+          .modal-content
+            .modal-header 
+              %button.close{ :type => "button",:data => { :dimiss => "modal"}, :aria => { :hidden => "true"}}><
+                = "&times;".html_safe 
+              %h4.modal-title#modalTitle Available Employee 
+            .modal-body
+              
+            .modal-footer
+              %button.btn.btn-default{ :data => { :dismiss => "modal"}} Close
+
+    

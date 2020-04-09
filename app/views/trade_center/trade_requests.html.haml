@@ -1,0 +1,30 @@
+.col-md-6
+  .panel.panel-defautlt.calendar
+    .panel-heading
+      %h3 Trade Requests
+    .panel-body
+      %table.table.table-striped
+        %thead
+          %tr
+            %th From
+            %th Date
+            %th Time
+            %th Position
+            %th Selection
+        %tbody
+          - if @trade_requests.empty?
+            %p No trade request.
+          - else
+            - for shift in @trade_requests
+              %tr< 
+                %td<
+                  = "#{shift.profile.fname} #{shift.profile.lname}"
+                %td<
+                  = shift.date.to_s(:long)
+                %td<
+                  = "#{shift.start_time.to_s(:time)} - #{shift.finish_time.to_s(:time)}"
+                %td<
+                  = shift.position
+                %td<
+                  = link_to 'Accept', pick_up_shift_path(shift), class: 'btn btn-success  btn-xs',method: :post 
+                  = link_to 'Decline', cancel_shift_path(shift),  class: 'btn btn-danger  btn-xs', method: :post

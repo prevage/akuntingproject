@@ -1,0 +1,19 @@
+{
+  "name": "Y",
+  "version": "0.0.0",
+  "authors": [
+    "Woodson Delhia <woodsondelhia@hotmail.com>"
+  ],
+  "license": "MIT",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "vendor/assets/bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "ractive": "~0.7.3"
+  }
+}
