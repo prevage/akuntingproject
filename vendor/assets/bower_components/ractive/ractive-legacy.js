@@ -5662,3 +5662,6830 @@
   			n: SECTION_UNLESS,
   			f: []
   		};
+
+  		utils_refineExpression(expression, unlessBlock);
+  	}
+
+  	return unlessBlock;
+  }
+
+  function invert(expression) {
+  	if (expression.t === PREFIX_OPERATOR && expression.s === "!") {
+  		return expression.o;
+  	}
+
+  	return {
+  		t: PREFIX_OPERATOR,
+  		s: "!",
+  		o: parensIfNecessary(expression)
+  	};
+  }
+
+  function mustache_readSection__combine(expressions) {
+  	if (expressions.length === 1) {
+  		return expressions[0];
+  	}
+
+  	return {
+  		t: INFIX_OPERATOR,
+  		s: "&&",
+  		o: [parensIfNecessary(expressions[0]), parensIfNecessary(mustache_readSection__combine(expressions.slice(1)))]
+  	};
+  }
+
+  function parensIfNecessary(expression) {
+  	// TODO only wrap if necessary
+  	return {
+  		t: BRACKETED,
+  		x: expression
+  	};
+  }
+
+  var converters_readHtmlComment = readHtmlComment;
+  var OPEN_COMMENT = "<!--",
+      CLOSE_COMMENT = "-->";
+  function readHtmlComment(parser) {
+  	var start, content, remaining, endIndex, comment;
+
+  	start = parser.pos;
+
+  	if (!parser.matchString(OPEN_COMMENT)) {
+  		return null;
+  	}
+
+  	remaining = parser.remaining();
+  	endIndex = remaining.indexOf(CLOSE_COMMENT);
+
+  	if (endIndex === -1) {
+  		parser.error("Illegal HTML - expected closing comment sequence ('-->')");
+  	}
+
+  	content = remaining.substr(0, endIndex);
+  	parser.pos += endIndex + 3;
+
+  	comment = {
+  		t: COMMENT,
+  		c: content
+  	};
+
+  	if (parser.includeLinePositions) {
+  		comment.p = parser.getLinePos(start);
+  	}
+
+  	return comment;
+  }
+
+  var booleanAttributes, voidElementNames, htmlEntities, controlCharacters, entityPattern, lessThan, greaterThan, amp;
+
+  // https://github.com/kangax/html-minifier/issues/63#issuecomment-37763316
+  booleanAttributes = /^(allowFullscreen|async|autofocus|autoplay|checked|compact|controls|declare|default|defaultChecked|defaultMuted|defaultSelected|defer|disabled|enabled|formNoValidate|hidden|indeterminate|inert|isMap|itemScope|loop|multiple|muted|noHref|noResize|noShade|noValidate|noWrap|open|pauseOnExit|readOnly|required|reversed|scoped|seamless|selected|sortable|translate|trueSpeed|typeMustMatch|visible)$/i;
+  voidElementNames = /^(?:area|base|br|col|command|doctype|embed|hr|img|input|keygen|link|meta|param|source|track|wbr)$/i;
+
+  htmlEntities = { quot: 34, amp: 38, apos: 39, lt: 60, gt: 62, nbsp: 160, iexcl: 161, cent: 162, pound: 163, curren: 164, yen: 165, brvbar: 166, sect: 167, uml: 168, copy: 169, ordf: 170, laquo: 171, not: 172, shy: 173, reg: 174, macr: 175, deg: 176, plusmn: 177, sup2: 178, sup3: 179, acute: 180, micro: 181, para: 182, middot: 183, cedil: 184, sup1: 185, ordm: 186, raquo: 187, frac14: 188, frac12: 189, frac34: 190, iquest: 191, Agrave: 192, Aacute: 193, Acirc: 194, Atilde: 195, Auml: 196, Aring: 197, AElig: 198, Ccedil: 199, Egrave: 200, Eacute: 201, Ecirc: 202, Euml: 203, Igrave: 204, Iacute: 205, Icirc: 206, Iuml: 207, ETH: 208, Ntilde: 209, Ograve: 210, Oacute: 211, Ocirc: 212, Otilde: 213, Ouml: 214, times: 215, Oslash: 216, Ugrave: 217, Uacute: 218, Ucirc: 219, Uuml: 220, Yacute: 221, THORN: 222, szlig: 223, agrave: 224, aacute: 225, acirc: 226, atilde: 227, auml: 228, aring: 229, aelig: 230, ccedil: 231, egrave: 232, eacute: 233, ecirc: 234, euml: 235, igrave: 236, iacute: 237, icirc: 238, iuml: 239, eth: 240, ntilde: 241, ograve: 242, oacute: 243, ocirc: 244, otilde: 245, ouml: 246, divide: 247, oslash: 248, ugrave: 249, uacute: 250, ucirc: 251, uuml: 252, yacute: 253, thorn: 254, yuml: 255, OElig: 338, oelig: 339, Scaron: 352, scaron: 353, Yuml: 376, fnof: 402, circ: 710, tilde: 732, Alpha: 913, Beta: 914, Gamma: 915, Delta: 916, Epsilon: 917, Zeta: 918, Eta: 919, Theta: 920, Iota: 921, Kappa: 922, Lambda: 923, Mu: 924, Nu: 925, Xi: 926, Omicron: 927, Pi: 928, Rho: 929, Sigma: 931, Tau: 932, Upsilon: 933, Phi: 934, Chi: 935, Psi: 936, Omega: 937, alpha: 945, beta: 946, gamma: 947, delta: 948, epsilon: 949, zeta: 950, eta: 951, theta: 952, iota: 953, kappa: 954, lambda: 955, mu: 956, nu: 957, xi: 958, omicron: 959, pi: 960, rho: 961, sigmaf: 962, sigma: 963, tau: 964, upsilon: 965, phi: 966, chi: 967, psi: 968, omega: 969, thetasym: 977, upsih: 978, piv: 982, ensp: 8194, emsp: 8195, thinsp: 8201, zwnj: 8204, zwj: 8205, lrm: 8206, rlm: 8207, ndash: 8211, mdash: 8212, lsquo: 8216, rsquo: 8217, sbquo: 8218, ldquo: 8220, rdquo: 8221, bdquo: 8222, dagger: 8224, Dagger: 8225, bull: 8226, hellip: 8230, permil: 8240, prime: 8242, Prime: 8243, lsaquo: 8249, rsaquo: 8250, oline: 8254, frasl: 8260, euro: 8364, image: 8465, weierp: 8472, real: 8476, trade: 8482, alefsym: 8501, larr: 8592, uarr: 8593, rarr: 8594, darr: 8595, harr: 8596, crarr: 8629, lArr: 8656, uArr: 8657, rArr: 8658, dArr: 8659, hArr: 8660, forall: 8704, part: 8706, exist: 8707, empty: 8709, nabla: 8711, isin: 8712, notin: 8713, ni: 8715, prod: 8719, sum: 8721, minus: 8722, lowast: 8727, radic: 8730, prop: 8733, infin: 8734, ang: 8736, and: 8743, or: 8744, cap: 8745, cup: 8746, int: 8747, there4: 8756, sim: 8764, cong: 8773, asymp: 8776, ne: 8800, equiv: 8801, le: 8804, ge: 8805, sub: 8834, sup: 8835, nsub: 8836, sube: 8838, supe: 8839, oplus: 8853, otimes: 8855, perp: 8869, sdot: 8901, lceil: 8968, rceil: 8969, lfloor: 8970, rfloor: 8971, lang: 9001, rang: 9002, loz: 9674, spades: 9824, clubs: 9827, hearts: 9829, diams: 9830 };
+  controlCharacters = [8364, 129, 8218, 402, 8222, 8230, 8224, 8225, 710, 8240, 352, 8249, 338, 141, 381, 143, 144, 8216, 8217, 8220, 8221, 8226, 8211, 8212, 732, 8482, 353, 8250, 339, 157, 382, 376];
+  entityPattern = new RegExp("&(#?(?:x[\\w\\d]+|\\d+|" + Object.keys(htmlEntities).join("|") + "));?", "g");
+
+  function decodeCharacterReferences(html) {
+  	return html.replace(entityPattern, function (match, entity) {
+  		var code;
+
+  		// Handle named entities
+  		if (entity[0] !== "#") {
+  			code = htmlEntities[entity];
+  		} else if (entity[1] === "x") {
+  			code = parseInt(entity.substring(2), 16);
+  		} else {
+  			code = parseInt(entity.substring(1), 10);
+  		}
+
+  		if (!code) {
+  			return match;
+  		}
+
+  		return String.fromCharCode(validateCode(code));
+  	});
+  }
+
+  // some code points are verboten. If we were inserting HTML, the browser would replace the illegal
+  // code points with alternatives in some cases - since we're bypassing that mechanism, we need
+  // to replace them ourselves
+  //
+  // Source: http://en.wikipedia.org/wiki/Character_encodings_in_HTML#Illegal_characters
+  function validateCode(code) {
+  	if (!code) {
+  		return 65533;
+  	}
+
+  	// line feed becomes generic whitespace
+  	if (code === 10) {
+  		return 32;
+  	}
+
+  	// ASCII range. (Why someone would use HTML entities for ASCII characters I don't know, but...)
+  	if (code < 128) {
+  		return code;
+  	}
+
+  	// code points 128-159 are dealt with leniently by browsers, but they're incorrect. We need
+  	// to correct the mistake or we'll end up with missing € signs and so on
+  	if (code <= 159) {
+  		return controlCharacters[code - 128];
+  	}
+
+  	// basic multilingual plane
+  	if (code < 55296) {
+  		return code;
+  	}
+
+  	// UTF-16 surrogate halves
+  	if (code <= 57343) {
+  		return 65533;
+  	}
+
+  	// rest of the basic multilingual plane
+  	if (code <= 65535) {
+  		return code;
+  	}
+
+  	return 65533;
+  }
+
+  lessThan = /</g;
+  greaterThan = />/g;
+  amp = /&/g;
+
+  function escapeHtml(str) {
+  	return str.replace(amp, "&amp;").replace(lessThan, "&lt;").replace(greaterThan, "&gt;");
+  }
+
+  var leadingLinebreak = /^\s*\r?\n/,
+      trailingLinebreak = /\r?\n\s*$/;
+
+  var stripStandalones = function (items) {
+  	var i, current, backOne, backTwo, lastSectionItem;
+
+  	for (i = 1; i < items.length; i += 1) {
+  		current = items[i];
+  		backOne = items[i - 1];
+  		backTwo = items[i - 2];
+
+  		// if we're at the end of a [text][comment][text] sequence...
+  		if (isString(current) && isComment(backOne) && isString(backTwo)) {
+
+  			// ... and the comment is a standalone (i.e. line breaks either side)...
+  			if (trailingLinebreak.test(backTwo) && leadingLinebreak.test(current)) {
+
+  				// ... then we want to remove the whitespace after the first line break
+  				items[i - 2] = backTwo.replace(trailingLinebreak, "\n");
+
+  				// and the leading line break of the second text token
+  				items[i] = current.replace(leadingLinebreak, "");
+  			}
+  		}
+
+  		// if the current item is a section, and it is preceded by a linebreak, and
+  		// its first item is a linebreak...
+  		if (isSection(current) && isString(backOne)) {
+  			if (trailingLinebreak.test(backOne) && isString(current.f[0]) && leadingLinebreak.test(current.f[0])) {
+  				items[i - 1] = backOne.replace(trailingLinebreak, "\n");
+  				current.f[0] = current.f[0].replace(leadingLinebreak, "");
+  			}
+  		}
+
+  		// if the last item was a section, and it is followed by a linebreak, and
+  		// its last item is a linebreak...
+  		if (isString(current) && isSection(backOne)) {
+  			lastSectionItem = lastItem(backOne.f);
+
+  			if (isString(lastSectionItem) && trailingLinebreak.test(lastSectionItem) && leadingLinebreak.test(current)) {
+  				backOne.f[backOne.f.length - 1] = lastSectionItem.replace(trailingLinebreak, "\n");
+  				items[i] = current.replace(leadingLinebreak, "");
+  			}
+  		}
+  	}
+
+  	return items;
+  };
+
+  function isString(item) {
+  	return typeof item === "string";
+  }
+
+  function isComment(item) {
+  	return item.t === COMMENT || item.t === DELIMCHANGE;
+  }
+
+  function isSection(item) {
+  	return (item.t === SECTION || item.t === INVERTED) && item.f;
+  }
+
+  var trimWhitespace = function (items, leadingPattern, trailingPattern) {
+  	var item;
+
+  	if (leadingPattern) {
+  		item = items[0];
+  		if (typeof item === "string") {
+  			item = item.replace(leadingPattern, "");
+
+  			if (!item) {
+  				items.shift();
+  			} else {
+  				items[0] = item;
+  			}
+  		}
+  	}
+
+  	if (trailingPattern) {
+  		item = lastItem(items);
+  		if (typeof item === "string") {
+  			item = item.replace(trailingPattern, "");
+
+  			if (!item) {
+  				items.pop();
+  			} else {
+  				items[items.length - 1] = item;
+  			}
+  		}
+  	}
+  };
+
+  var utils_cleanup = cleanup;
+  var contiguousWhitespace = /[ \t\f\r\n]+/g;
+  var preserveWhitespaceElements = /^(?:pre|script|style|textarea)$/i;
+  var utils_cleanup__leadingWhitespace = /^[ \t\f\r\n]+/;
+  var trailingWhitespace = /[ \t\f\r\n]+$/;
+  var leadingNewLine = /^(?:\r\n|\r|\n)/;
+  var trailingNewLine = /(?:\r\n|\r|\n)$/;
+  function cleanup(items, stripComments, preserveWhitespace, removeLeadingWhitespace, removeTrailingWhitespace) {
+  	var i, item, previousItem, nextItem, preserveWhitespaceInsideFragment, removeLeadingWhitespaceInsideFragment, removeTrailingWhitespaceInsideFragment, key;
+
+  	// First pass - remove standalones and comments etc
+  	stripStandalones(items);
+
+  	i = items.length;
+  	while (i--) {
+  		item = items[i];
+
+  		// Remove delimiter changes, unsafe elements etc
+  		if (item.exclude) {
+  			items.splice(i, 1);
+  		}
+
+  		// Remove comments, unless we want to keep them
+  		else if (stripComments && item.t === COMMENT) {
+  			items.splice(i, 1);
+  		}
+  	}
+
+  	// If necessary, remove leading and trailing whitespace
+  	trimWhitespace(items, removeLeadingWhitespace ? utils_cleanup__leadingWhitespace : null, removeTrailingWhitespace ? trailingWhitespace : null);
+
+  	i = items.length;
+  	while (i--) {
+  		item = items[i];
+
+  		// Recurse
+  		if (item.f) {
+  			var isPreserveWhitespaceElement = item.t === ELEMENT && preserveWhitespaceElements.test(item.e);
+  			preserveWhitespaceInsideFragment = preserveWhitespace || isPreserveWhitespaceElement;
+
+  			if (!preserveWhitespace && isPreserveWhitespaceElement) {
+  				trimWhitespace(item.f, leadingNewLine, trailingNewLine);
+  			}
+
+  			if (!preserveWhitespaceInsideFragment) {
+  				previousItem = items[i - 1];
+  				nextItem = items[i + 1];
+
+  				// if the previous item was a text item with trailing whitespace,
+  				// remove leading whitespace inside the fragment
+  				if (!previousItem || typeof previousItem === "string" && trailingWhitespace.test(previousItem)) {
+  					removeLeadingWhitespaceInsideFragment = true;
+  				}
+
+  				// and vice versa
+  				if (!nextItem || typeof nextItem === "string" && utils_cleanup__leadingWhitespace.test(nextItem)) {
+  					removeTrailingWhitespaceInsideFragment = true;
+  				}
+  			}
+
+  			cleanup(item.f, stripComments, preserveWhitespaceInsideFragment, removeLeadingWhitespaceInsideFragment, removeTrailingWhitespaceInsideFragment);
+  		}
+
+  		// Split if-else blocks into two (an if, and an unless)
+  		if (item.l) {
+  			cleanup(item.l.f, stripComments, preserveWhitespace, removeLeadingWhitespaceInsideFragment, removeTrailingWhitespaceInsideFragment);
+
+  			items.splice(i + 1, 0, item.l);
+  			delete item.l; // TODO would be nice if there was a way around this
+  		}
+
+  		// Clean up element attributes
+  		if (item.a) {
+  			for (key in item.a) {
+  				if (item.a.hasOwnProperty(key) && typeof item.a[key] !== "string") {
+  					cleanup(item.a[key], stripComments, preserveWhitespace, removeLeadingWhitespaceInsideFragment, removeTrailingWhitespaceInsideFragment);
+  				}
+  			}
+  		}
+
+  		// Clean up conditional attributes
+  		if (item.m) {
+  			cleanup(item.m, stripComments, preserveWhitespace, removeLeadingWhitespaceInsideFragment, removeTrailingWhitespaceInsideFragment);
+  		}
+
+  		// Clean up event handlers
+  		if (item.v) {
+  			for (key in item.v) {
+  				if (item.v.hasOwnProperty(key)) {
+  					// clean up names
+  					if (isArray(item.v[key].n)) {
+  						cleanup(item.v[key].n, stripComments, preserveWhitespace, removeLeadingWhitespaceInsideFragment, removeTrailingWhitespaceInsideFragment);
+  					}
+
+  					// clean up params
+  					if (isArray(item.v[key].d)) {
+  						cleanup(item.v[key].d, stripComments, preserveWhitespace, removeLeadingWhitespaceInsideFragment, removeTrailingWhitespaceInsideFragment);
+  					}
+  				}
+  			}
+  		}
+  	}
+
+  	// final pass - fuse text nodes together
+  	i = items.length;
+  	while (i--) {
+  		if (typeof items[i] === "string") {
+  			if (typeof items[i + 1] === "string") {
+  				items[i] = items[i] + items[i + 1];
+  				items.splice(i + 1, 1);
+  			}
+
+  			if (!preserveWhitespace) {
+  				items[i] = items[i].replace(contiguousWhitespace, " ");
+  			}
+
+  			if (items[i] === "") {
+  				items.splice(i, 1);
+  			}
+  		}
+  	}
+  }
+
+  var element_readClosingTag = readClosingTag;
+  var closingTagPattern = /^([a-zA-Z]{1,}:?[a-zA-Z0-9\-]*)\s*\>/;
+  function readClosingTag(parser) {
+  	var start, tag;
+
+  	start = parser.pos;
+
+  	// are we looking at a closing tag?
+  	if (!parser.matchString("</")) {
+  		return null;
+  	}
+
+  	if (tag = parser.matchPattern(closingTagPattern)) {
+  		if (parser.inside && tag !== parser.inside) {
+  			parser.pos = start;
+  			return null;
+  		}
+
+  		return {
+  			t: CLOSING_TAG,
+  			e: tag
+  		};
+  	}
+
+  	// We have an illegal closing tag, report it
+  	parser.pos -= 2;
+  	parser.error("Illegal closing tag");
+  }
+
+  var getLowestIndex = function (haystack, needles) {
+  	var i, index, lowest;
+
+  	i = needles.length;
+  	while (i--) {
+  		index = haystack.indexOf(needles[i]);
+
+  		// short circuit
+  		if (!index) {
+  			return 0;
+  		}
+
+  		if (index === -1) {
+  			continue;
+  		}
+
+  		if (!lowest || index < lowest) {
+  			lowest = index;
+  		}
+  	}
+
+  	return lowest || -1;
+  };
+
+  var element_readAttribute = readAttribute;
+
+  var attributeNamePattern = /^[^\s"'>\/=]+/,
+      unquotedAttributeValueTextPattern = /^[^\s"'=<>`]+/;
+  function readAttribute(parser) {
+  	var attr, name, value;
+
+  	parser.allowWhitespace();
+
+  	name = parser.matchPattern(attributeNamePattern);
+  	if (!name) {
+  		return null;
+  	}
+
+  	attr = { name: name };
+
+  	value = readAttributeValue(parser);
+  	if (value != null) {
+  		// not null/undefined
+  		attr.value = value;
+  	}
+
+  	return attr;
+  }
+
+  function readAttributeValue(parser) {
+  	var start, valueStart, startDepth, value;
+
+  	start = parser.pos;
+
+  	// next character must be `=`, `/`, `>` or whitespace
+  	if (!/[=\/>\s]/.test(parser.nextChar())) {
+  		parser.error("Expected `=`, `/`, `>` or whitespace");
+  	}
+
+  	parser.allowWhitespace();
+
+  	if (!parser.matchString("=")) {
+  		parser.pos = start;
+  		return null;
+  	}
+
+  	parser.allowWhitespace();
+
+  	valueStart = parser.pos;
+  	startDepth = parser.sectionDepth;
+
+  	value = readQuotedAttributeValue(parser, "'") || readQuotedAttributeValue(parser, "\"") || readUnquotedAttributeValue(parser);
+
+  	if (value === null) {
+  		parser.error("Expected valid attribute value");
+  	}
+
+  	if (parser.sectionDepth !== startDepth) {
+  		parser.pos = valueStart;
+  		parser.error("An attribute value must contain as many opening section tags as closing section tags");
+  	}
+
+  	if (!value.length) {
+  		return "";
+  	}
+
+  	if (value.length === 1 && typeof value[0] === "string") {
+  		return decodeCharacterReferences(value[0]);
+  	}
+
+  	return value;
+  }
+
+  function readUnquotedAttributeValueToken(parser) {
+  	var start, text, haystack, needles, index;
+
+  	start = parser.pos;
+
+  	text = parser.matchPattern(unquotedAttributeValueTextPattern);
+
+  	if (!text) {
+  		return null;
+  	}
+
+  	haystack = text;
+  	needles = parser.tags.map(function (t) {
+  		return t.open;
+  	}); // TODO refactor... we do this in readText.js as well
+
+  	if ((index = getLowestIndex(haystack, needles)) !== -1) {
+  		text = text.substr(0, index);
+  		parser.pos = start + text.length;
+  	}
+
+  	return text;
+  }
+
+  function readUnquotedAttributeValue(parser) {
+  	var tokens, token;
+
+  	parser.inAttribute = true;
+
+  	tokens = [];
+
+  	token = converters_readMustache(parser) || readUnquotedAttributeValueToken(parser);
+  	while (token !== null) {
+  		tokens.push(token);
+  		token = converters_readMustache(parser) || readUnquotedAttributeValueToken(parser);
+  	}
+
+  	if (!tokens.length) {
+  		return null;
+  	}
+
+  	parser.inAttribute = false;
+  	return tokens;
+  }
+
+  function readQuotedAttributeValue(parser, quoteMark) {
+  	var start, tokens, token;
+
+  	start = parser.pos;
+
+  	if (!parser.matchString(quoteMark)) {
+  		return null;
+  	}
+
+  	parser.inAttribute = quoteMark;
+
+  	tokens = [];
+
+  	token = converters_readMustache(parser) || readQuotedStringToken(parser, quoteMark);
+  	while (token !== null) {
+  		tokens.push(token);
+  		token = converters_readMustache(parser) || readQuotedStringToken(parser, quoteMark);
+  	}
+
+  	if (!parser.matchString(quoteMark)) {
+  		parser.pos = start;
+  		return null;
+  	}
+
+  	parser.inAttribute = false;
+
+  	return tokens;
+  }
+
+  function readQuotedStringToken(parser, quoteMark) {
+  	var start, index, haystack, needles;
+
+  	start = parser.pos;
+  	haystack = parser.remaining();
+
+  	needles = parser.tags.map(function (t) {
+  		return t.open;
+  	}); // TODO refactor... we do this in readText.js as well
+  	needles.push(quoteMark);
+
+  	index = getLowestIndex(haystack, needles);
+
+  	if (index === -1) {
+  		parser.error("Quoted attribute value must have a closing quote");
+  	}
+
+  	if (!index) {
+  		return null;
+  	}
+
+  	parser.pos += index;
+  	return haystack.substr(0, index);
+  }
+
+  var JsonParser, specials, specialsPattern, parseJSON__numberPattern, placeholderPattern, placeholderAtStartPattern, onlyWhitespace;
+
+  specials = {
+  	"true": true,
+  	"false": false,
+  	undefined: undefined,
+  	"null": null
+  };
+
+  specialsPattern = new RegExp("^(?:" + Object.keys(specials).join("|") + ")");
+  parseJSON__numberPattern = /^(?:[+-]?)(?:(?:(?:0|[1-9]\d*)?\.\d+)|(?:(?:0|[1-9]\d*)\.)|(?:0|[1-9]\d*))(?:[eE][+-]?\d+)?/;
+  placeholderPattern = /\$\{([^\}]+)\}/g;
+  placeholderAtStartPattern = /^\$\{([^\}]+)\}/;
+  onlyWhitespace = /^\s*$/;
+
+  JsonParser = parse_Parser.extend({
+  	init: function (str, options) {
+  		this.values = options.values;
+  		this.allowWhitespace();
+  	},
+
+  	postProcess: function (result) {
+  		if (result.length !== 1 || !onlyWhitespace.test(this.leftover)) {
+  			return null;
+  		}
+
+  		return { value: result[0].v };
+  	},
+
+  	converters: [function getPlaceholder(parser) {
+  		var placeholder;
+
+  		if (!parser.values) {
+  			return null;
+  		}
+
+  		placeholder = parser.matchPattern(placeholderAtStartPattern);
+
+  		if (placeholder && parser.values.hasOwnProperty(placeholder)) {
+  			return { v: parser.values[placeholder] };
+  		}
+  	}, function getSpecial(parser) {
+  		var special;
+
+  		if (special = parser.matchPattern(specialsPattern)) {
+  			return { v: specials[special] };
+  		}
+  	}, function getNumber(parser) {
+  		var number;
+
+  		if (number = parser.matchPattern(parseJSON__numberPattern)) {
+  			return { v: +number };
+  		}
+  	}, function getString(parser) {
+  		var stringLiteral = readStringLiteral(parser),
+  		    values;
+
+  		if (stringLiteral && (values = parser.values)) {
+  			return {
+  				v: stringLiteral.v.replace(placeholderPattern, function (match, $1) {
+  					return $1 in values ? values[$1] : $1;
+  				})
+  			};
+  		}
+
+  		return stringLiteral;
+  	}, function getObject(parser) {
+  		var result, pair;
+
+  		if (!parser.matchString("{")) {
+  			return null;
+  		}
+
+  		result = {};
+
+  		parser.allowWhitespace();
+
+  		if (parser.matchString("}")) {
+  			return { v: result };
+  		}
+
+  		while (pair = getKeyValuePair(parser)) {
+  			result[pair.key] = pair.value;
+
+  			parser.allowWhitespace();
+
+  			if (parser.matchString("}")) {
+  				return { v: result };
+  			}
+
+  			if (!parser.matchString(",")) {
+  				return null;
+  			}
+  		}
+
+  		return null;
+  	}, function getArray(parser) {
+  		var result, valueToken;
+
+  		if (!parser.matchString("[")) {
+  			return null;
+  		}
+
+  		result = [];
+
+  		parser.allowWhitespace();
+
+  		if (parser.matchString("]")) {
+  			return { v: result };
+  		}
+
+  		while (valueToken = parser.read()) {
+  			result.push(valueToken.v);
+
+  			parser.allowWhitespace();
+
+  			if (parser.matchString("]")) {
+  				return { v: result };
+  			}
+
+  			if (!parser.matchString(",")) {
+  				return null;
+  			}
+
+  			parser.allowWhitespace();
+  		}
+
+  		return null;
+  	}]
+  });
+
+  function getKeyValuePair(parser) {
+  	var key, valueToken, pair;
+
+  	parser.allowWhitespace();
+
+  	key = shared_readKey(parser);
+
+  	if (!key) {
+  		return null;
+  	}
+
+  	pair = { key: key };
+
+  	parser.allowWhitespace();
+  	if (!parser.matchString(":")) {
+  		return null;
+  	}
+  	parser.allowWhitespace();
+
+  	valueToken = parser.read();
+  	if (!valueToken) {
+  		return null;
+  	}
+
+  	pair.value = valueToken.v;
+
+  	return pair;
+  }
+
+  var parseJSON = function (str, values) {
+  	var parser = new JsonParser(str, {
+  		values: values
+  	});
+
+  	return parser.result;
+  };
+
+  // TODO clean this up, it's shocking
+  var element_processDirective = processDirective;
+  var methodCallPattern = /^([a-zA-Z_$][a-zA-Z_$0-9]*)\(/,
+      methodCallExcessPattern = /\)\s*$/,
+      ExpressionParser;
+
+  ExpressionParser = parse_Parser.extend({
+  	converters: [converters_readExpression]
+  });
+  function processDirective(tokens, parentParser) {
+  	var result, match, parser, args, token, colonIndex, directiveName, directiveArgs, parsed;
+
+  	if (typeof tokens === "string") {
+  		if (match = methodCallPattern.exec(tokens)) {
+  			var end = tokens.lastIndexOf(")");
+
+  			// check for invalid method calls
+  			if (!methodCallExcessPattern.test(tokens)) {
+  				parentParser.error("Invalid input after method call expression '" + tokens.slice(end + 1) + "'");
+  			}
+
+  			result = { m: match[1] };
+  			args = "[" + tokens.slice(result.m.length + 1, end) + "]";
+
+  			parser = new ExpressionParser(args);
+  			result.a = utils_flattenExpression(parser.result[0]);
+
+  			return result;
+  		}
+
+  		if (tokens.indexOf(":") === -1) {
+  			return tokens.trim();
+  		}
+
+  		tokens = [tokens];
+  	}
+
+  	result = {};
+
+  	directiveName = [];
+  	directiveArgs = [];
+
+  	if (tokens) {
+  		while (tokens.length) {
+  			token = tokens.shift();
+
+  			if (typeof token === "string") {
+  				colonIndex = token.indexOf(":");
+
+  				if (colonIndex === -1) {
+  					directiveName.push(token);
+  				} else {
+
+  					// is the colon the first character?
+  					if (colonIndex) {
+  						// no
+  						directiveName.push(token.substr(0, colonIndex));
+  					}
+
+  					// if there is anything after the colon in this token, treat
+  					// it as the first token of the directiveArgs fragment
+  					if (token.length > colonIndex + 1) {
+  						directiveArgs[0] = token.substring(colonIndex + 1);
+  					}
+
+  					break;
+  				}
+  			} else {
+  				directiveName.push(token);
+  			}
+  		}
+
+  		directiveArgs = directiveArgs.concat(tokens);
+  	}
+
+  	if (!directiveName.length) {
+  		result = "";
+  	} else if (directiveArgs.length || typeof directiveName !== "string") {
+  		result = {
+  			// TODO is this really necessary? just use the array
+  			n: directiveName.length === 1 && typeof directiveName[0] === "string" ? directiveName[0] : directiveName
+  		};
+
+  		if (directiveArgs.length === 1 && typeof directiveArgs[0] === "string") {
+  			parsed = parseJSON("[" + directiveArgs[0] + "]");
+  			result.a = parsed ? parsed.value : directiveArgs[0].trim();
+  		} else {
+  			result.d = directiveArgs;
+  		}
+  	} else {
+  		result = directiveName;
+  	}
+
+  	return result;
+  }
+
+  var tagNamePattern = /^[a-zA-Z]{1,}:?[a-zA-Z0-9\-]*/,
+      validTagNameFollower = /^[\s\n\/>]/,
+      onPattern = /^on/,
+      proxyEventPattern = /^on-([a-zA-Z\\*\\.$_][a-zA-Z\\*\\.$_0-9\-]+)$/,
+      reservedEventNames = /^(?:change|reset|teardown|update|construct|config|init|render|unrender|detach|insert)$/,
+      directives = { "intro-outro": "t0", intro: "t1", outro: "t2", decorator: "o" },
+      exclude = { exclude: true },
+      disallowedContents;
+
+  // based on http://developers.whatwg.org/syntax.html#syntax-tag-omission
+  disallowedContents = {
+  	li: ["li"],
+  	dt: ["dt", "dd"],
+  	dd: ["dt", "dd"],
+  	p: "address article aside blockquote div dl fieldset footer form h1 h2 h3 h4 h5 h6 header hgroup hr main menu nav ol p pre section table ul".split(" "),
+  	rt: ["rt", "rp"],
+  	rp: ["rt", "rp"],
+  	optgroup: ["optgroup"],
+  	option: ["option", "optgroup"],
+  	thead: ["tbody", "tfoot"],
+  	tbody: ["tbody", "tfoot"],
+  	tfoot: ["tbody"],
+  	tr: ["tr", "tbody"],
+  	td: ["td", "th", "tr"],
+  	th: ["td", "th", "tr"]
+  };
+
+  var converters_readElement = readElement;
+
+  function readElement(parser) {
+  	var start, element, directiveName, match, addProxyEvent, attribute, directive, selfClosing, children, partials, hasPartials, child, closed, pos, remaining, closingTag;
+
+  	start = parser.pos;
+
+  	if (parser.inside || parser.inAttribute) {
+  		return null;
+  	}
+
+  	if (!parser.matchString("<")) {
+  		return null;
+  	}
+
+  	// if this is a closing tag, abort straight away
+  	if (parser.nextChar() === "/") {
+  		return null;
+  	}
+
+  	element = {};
+  	if (parser.includeLinePositions) {
+  		element.p = parser.getLinePos(start);
+  	}
+
+  	if (parser.matchString("!")) {
+  		element.t = DOCTYPE;
+  		if (!parser.matchPattern(/^doctype/i)) {
+  			parser.error("Expected DOCTYPE declaration");
+  		}
+
+  		element.a = parser.matchPattern(/^(.+?)>/);
+  		return element;
+  	}
+
+  	element.t = ELEMENT;
+
+  	// element name
+  	element.e = parser.matchPattern(tagNamePattern);
+  	if (!element.e) {
+  		return null;
+  	}
+
+  	// next character must be whitespace, closing solidus or '>'
+  	if (!validTagNameFollower.test(parser.nextChar())) {
+  		parser.error("Illegal tag name");
+  	}
+
+  	addProxyEvent = function (name, directive) {
+  		var directiveName = directive.n || directive;
+
+  		if (reservedEventNames.test(directiveName)) {
+  			parser.pos -= directiveName.length;
+  			parser.error("Cannot use reserved event names (change, reset, teardown, update, construct, config, init, render, unrender, detach, insert)");
+  		}
+
+  		element.v[name] = directive;
+  	};
+
+  	parser.allowWhitespace();
+
+  	// directives and attributes
+  	while (attribute = converters_readMustache(parser) || element_readAttribute(parser)) {
+  		// regular attributes
+  		if (attribute.name) {
+  			// intro, outro, decorator
+  			if (directiveName = directives[attribute.name]) {
+  				element[directiveName] = element_processDirective(attribute.value, parser);
+  			}
+
+  			// on-click etc
+  			else if (match = proxyEventPattern.exec(attribute.name)) {
+  				if (!element.v) element.v = {};
+  				directive = element_processDirective(attribute.value, parser);
+  				addProxyEvent(match[1], directive);
+  			} else {
+  				if (!parser.sanitizeEventAttributes || !onPattern.test(attribute.name)) {
+  					if (!element.a) element.a = {};
+  					element.a[attribute.name] = attribute.value || (attribute.value === "" ? "" : 0);
+  				}
+  			}
+  		}
+
+  		// {{#if foo}}class='foo'{{/if}}
+  		else {
+  			if (!element.m) element.m = [];
+  			element.m.push(attribute);
+  		}
+
+  		parser.allowWhitespace();
+  	}
+
+  	// allow whitespace before closing solidus
+  	parser.allowWhitespace();
+
+  	// self-closing solidus?
+  	if (parser.matchString("/")) {
+  		selfClosing = true;
+  	}
+
+  	// closing angle bracket
+  	if (!parser.matchString(">")) {
+  		return null;
+  	}
+
+  	var lowerCaseName = element.e.toLowerCase();
+  	var preserveWhitespace = parser.preserveWhitespace;
+
+  	if (!selfClosing && !voidElementNames.test(element.e)) {
+  		parser.elementStack.push(lowerCaseName);
+
+  		// Special case - if we open a script element, further tags should
+  		// be ignored unless they're a closing script element
+  		if (lowerCaseName === "script" || lowerCaseName === "style") {
+  			parser.inside = lowerCaseName;
+  		}
+
+  		children = [];
+  		partials = create(null);
+
+  		do {
+  			pos = parser.pos;
+  			remaining = parser.remaining();
+
+  			// if for example we're in an <li> element, and we see another
+  			// <li> tag, close the first so they become siblings
+  			if (!canContain(lowerCaseName, remaining)) {
+  				closed = true;
+  			}
+
+  			// closing tag
+  			else if (closingTag = element_readClosingTag(parser)) {
+  				closed = true;
+
+  				var closingTagName = closingTag.e.toLowerCase();
+
+  				// if this *isn't* the closing tag for the current element...
+  				if (closingTagName !== lowerCaseName) {
+  					// rewind parser
+  					parser.pos = pos;
+
+  					// if it doesn't close a parent tag, error
+  					if (! ~parser.elementStack.indexOf(closingTagName)) {
+  						var errorMessage = "Unexpected closing tag";
+
+  						// add additional help for void elements, since component names
+  						// might clash with them
+  						if (voidElementNames.test(closingTagName)) {
+  							errorMessage += " (<" + closingTagName + "> is a void element - it cannot contain children)";
+  						}
+
+  						parser.error(errorMessage);
+  					}
+  				}
+  			}
+
+  			// implicit close by closing section tag. TODO clean this up
+  			else if (child = section_readClosing(parser, { open: parser.standardDelimiters[0], close: parser.standardDelimiters[1] })) {
+  				closed = true;
+  				parser.pos = pos;
+  			} else {
+  				if (child = parser.read(PARTIAL_READERS)) {
+  					if (partials[child.n]) {
+  						parser.pos = pos;
+  						parser.error("Duplicate partial definition");
+  					}
+
+  					utils_cleanup(child.f, parser.stripComments, preserveWhitespace, !preserveWhitespace, !preserveWhitespace);
+
+  					partials[child.n] = child.f;
+  					hasPartials = true;
+  				} else {
+  					if (child = parser.read(READERS)) {
+  						children.push(child);
+  					} else {
+  						closed = true;
+  					}
+  				}
+  			}
+  		} while (!closed);
+
+  		if (children.length) {
+  			element.f = children;
+  		}
+
+  		if (hasPartials) {
+  			element.p = partials;
+  		}
+
+  		parser.elementStack.pop();
+  	}
+
+  	parser.inside = null;
+
+  	if (parser.sanitizeElements && parser.sanitizeElements.indexOf(lowerCaseName) !== -1) {
+  		return exclude;
+  	}
+
+  	return element;
+  }
+
+  function canContain(name, remaining) {
+  	var match, disallowed;
+
+  	match = /^<([a-zA-Z][a-zA-Z0-9]*)/.exec(remaining);
+  	disallowed = disallowedContents[name];
+
+  	if (!match || !disallowed) {
+  		return true;
+  	}
+
+  	return ! ~disallowed.indexOf(match[1].toLowerCase());
+  }
+
+  var converters_readText = readText;
+  function readText(parser) {
+  	var index, remaining, disallowed, barrier;
+
+  	remaining = parser.remaining();
+
+  	barrier = parser.inside ? "</" + parser.inside : "<";
+
+  	if (parser.inside && !parser.interpolate[parser.inside]) {
+  		index = remaining.indexOf(barrier);
+  	} else {
+  		disallowed = parser.tags.map(function (t) {
+  			return t.open;
+  		});
+  		disallowed = disallowed.concat(parser.tags.map(function (t) {
+  			return "\\" + t.open;
+  		}));
+
+  		// http://developers.whatwg.org/syntax.html#syntax-attributes
+  		if (parser.inAttribute === true) {
+  			// we're inside an unquoted attribute value
+  			disallowed.push("\"", "'", "=", "<", ">", "`");
+  		} else if (parser.inAttribute) {
+  			// quoted attribute value
+  			disallowed.push(parser.inAttribute);
+  		} else {
+  			disallowed.push(barrier);
+  		}
+
+  		index = getLowestIndex(remaining, disallowed);
+  	}
+
+  	if (!index) {
+  		return null;
+  	}
+
+  	if (index === -1) {
+  		index = remaining.length;
+  	}
+
+  	parser.pos += index;
+
+  	return parser.inside ? remaining.substr(0, index) : decodeCharacterReferences(remaining.substr(0, index));
+  }
+
+  var utils_escapeRegExp = escapeRegExp;
+  var utils_escapeRegExp__pattern = /[-/\\^$*+?.()|[\]{}]/g;
+  function escapeRegExp(str) {
+  	return str.replace(utils_escapeRegExp__pattern, "\\$&");
+  }
+
+  var converters_readPartialDefinitionComment = readPartialDefinitionComment;
+
+  var startPattern = /^<!--\s*/,
+      namePattern = /s*>\s*([a-zA-Z_$][-a-zA-Z_$0-9]*)\s*/,
+      finishPattern = /\s*-->/,
+      child;
+
+  function readPartialDefinitionComment(parser) {
+  	var firstPos = parser.pos,
+  	    open = parser.standardDelimiters[0],
+  	    close = parser.standardDelimiters[1],
+  	    content = undefined,
+  	    closed = undefined;
+
+  	if (!parser.matchPattern(startPattern) || !parser.matchString(open)) {
+  		parser.pos = firstPos;
+  		return null;
+  	}
+
+  	var name = parser.matchPattern(namePattern);
+
+  	warnOnceIfDebug("Inline partial comments are deprecated.\nUse this...\n  {{#partial " + name + "}} ... {{/partial}}\n\n...instead of this:\n  <!-- {{>" + name + "}} --> ... <!-- {{/" + name + "}} -->'");
+
+  	// make sure the rest of the comment is in the correct place
+  	if (!parser.matchString(close) || !parser.matchPattern(finishPattern)) {
+  		parser.pos = firstPos;
+  		return null;
+  	}
+
+  	content = [];
+
+  	var endPattern = new RegExp("^<!--\\s*" + utils_escapeRegExp(open) + "\\s*\\/\\s*" + name + "\\s*" + utils_escapeRegExp(close) + "\\s*-->");
+
+  	do {
+  		if (parser.matchPattern(endPattern)) {
+  			closed = true;
+  		} else {
+  			child = parser.read(READERS);
+  			if (!child) {
+  				parser.error("expected closing comment ('<!-- " + open + "/" + name + "" + close + " -->')");
+  			}
+
+  			content.push(child);
+  		}
+  	} while (!closed);
+
+  	return {
+  		t: INLINE_PARTIAL,
+  		f: content,
+  		n: name
+  	};
+  }
+
+  var converters_readPartialDefinitionSection = readPartialDefinitionSection;
+  var partialDefinitionSectionPattern = /^#\s*partial\s+/;
+  function readPartialDefinitionSection(parser) {
+  	var start, name, content, child, closed;
+
+  	start = parser.pos;
+
+  	var delimiters = parser.standardDelimiters;
+
+  	if (!parser.matchString(delimiters[0])) {
+  		return null;
+  	}
+
+  	if (!parser.matchPattern(partialDefinitionSectionPattern)) {
+  		parser.pos = start;
+  		return null;
+  	}
+
+  	name = parser.matchPattern(/^[a-zA-Z_$][a-zA-Z_$0-9\-]*/);
+
+  	if (!name) {
+  		parser.error("expected legal partial name");
+  	}
+
+  	if (!parser.matchString(delimiters[1])) {
+  		parser.error("Expected closing delimiter '" + delimiters[1] + "'");
+  	}
+
+  	content = [];
+
+  	do {
+  		// TODO clean this up
+  		if (child = section_readClosing(parser, { open: parser.standardDelimiters[0], close: parser.standardDelimiters[1] })) {
+  			if (!child.r === "partial") {
+  				parser.error("Expected " + delimiters[0] + "/partial" + delimiters[1]);
+  			}
+
+  			closed = true;
+  		} else {
+  			child = parser.read(READERS);
+
+  			if (!child) {
+  				parser.error("Expected " + delimiters[0] + "/partial" + delimiters[1]);
+  			}
+
+  			content.push(child);
+  		}
+  	} while (!closed);
+
+  	return {
+  		t: INLINE_PARTIAL,
+  		n: name,
+  		f: content
+  	};
+  }
+
+  var converters_readTemplate = readTemplate;
+  function readTemplate(parser) {
+  	var fragment = [];
+  	var partials = create(null);
+  	var hasPartials = false;
+
+  	var preserveWhitespace = parser.preserveWhitespace;
+
+  	while (parser.pos < parser.str.length) {
+  		var pos = parser.pos,
+  		    item = undefined,
+  		    partial = undefined;
+
+  		if (partial = parser.read(PARTIAL_READERS)) {
+  			if (partials[partial.n]) {
+  				parser.pos = pos;
+  				parser.error("Duplicated partial definition");
+  			}
+
+  			utils_cleanup(partial.f, parser.stripComments, preserveWhitespace, !preserveWhitespace, !preserveWhitespace);
+
+  			partials[partial.n] = partial.f;
+  			hasPartials = true;
+  		} else if (item = parser.read(READERS)) {
+  			fragment.push(item);
+  		} else {
+  			parser.error("Unexpected template content");
+  		}
+  	}
+
+  	var result = {
+  		v: TEMPLATE_VERSION,
+  		t: fragment
+  	};
+
+  	if (hasPartials) {
+  		result.p = partials;
+  	}
+
+  	return result;
+  }
+
+  var _parse = parse;
+
+  var STANDARD_READERS = [mustache_readPartial, mustache_readUnescaped, mustache_readSection, mustache_readYielder, mustache_readInterpolator, readMustacheComment];
+  var TRIPLE_READERS = [mustache_readTriple];
+  var STATIC_READERS = [mustache_readUnescaped, mustache_readSection, mustache_readInterpolator]; // TODO does it make sense to have a static section?
+
+  var StandardParser = undefined;
+  function parse(template, options) {
+  	return new StandardParser(template, options || {}).result;
+  }
+
+  var READERS = [converters_readMustache, converters_readHtmlComment, converters_readElement, converters_readText];
+  var PARTIAL_READERS = [converters_readPartialDefinitionComment, converters_readPartialDefinitionSection];
+
+  StandardParser = parse_Parser.extend({
+  	init: function (str, options) {
+  		var tripleDelimiters = options.tripleDelimiters || ["{{{", "}}}"],
+  		    staticDelimiters = options.staticDelimiters || ["[[", "]]"],
+  		    staticTripleDelimiters = options.staticTripleDelimiters || ["[[[", "]]]"];
+
+  		this.standardDelimiters = options.delimiters || ["{{", "}}"];
+
+  		this.tags = [{ isStatic: false, isTriple: false, open: this.standardDelimiters[0], close: this.standardDelimiters[1], readers: STANDARD_READERS }, { isStatic: false, isTriple: true, open: tripleDelimiters[0], close: tripleDelimiters[1], readers: TRIPLE_READERS }, { isStatic: true, isTriple: false, open: staticDelimiters[0], close: staticDelimiters[1], readers: STATIC_READERS }, { isStatic: true, isTriple: true, open: staticTripleDelimiters[0], close: staticTripleDelimiters[1], readers: TRIPLE_READERS }];
+
+  		this.sortMustacheTags();
+
+  		this.sectionDepth = 0;
+  		this.elementStack = [];
+
+  		this.interpolate = {
+  			script: !options.interpolate || options.interpolate.script !== false,
+  			style: !options.interpolate || options.interpolate.style !== false
+  		};
+
+  		if (options.sanitize === true) {
+  			options.sanitize = {
+  				// blacklist from https://code.google.com/p/google-caja/source/browse/trunk/src/com/google/caja/lang/html/html4-elements-whitelist.json
+  				elements: "applet base basefont body frame frameset head html isindex link meta noframes noscript object param script style title".split(" "),
+  				eventAttributes: true
+  			};
+  		}
+
+  		this.stripComments = options.stripComments !== false;
+  		this.preserveWhitespace = options.preserveWhitespace;
+  		this.sanitizeElements = options.sanitize && options.sanitize.elements;
+  		this.sanitizeEventAttributes = options.sanitize && options.sanitize.eventAttributes;
+  		this.includeLinePositions = options.includeLinePositions;
+  	},
+
+  	postProcess: function (result) {
+  		// special case - empty string
+  		if (!result.length) {
+  			return { t: [], v: TEMPLATE_VERSION };
+  		}
+
+  		if (this.sectionDepth > 0) {
+  			this.error("A section was left open");
+  		}
+
+  		utils_cleanup(result[0].t, this.stripComments, this.preserveWhitespace, !this.preserveWhitespace, !this.preserveWhitespace);
+
+  		return result[0];
+  	},
+
+  	converters: [converters_readTemplate],
+
+  	sortMustacheTags: function () {
+  		// Sort in order of descending opening delimiter length (longer first),
+  		// to protect against opening delimiters being substrings of each other
+  		this.tags.sort(function (a, b) {
+  			return b.open.length - a.open.length;
+  		});
+  	}
+  });
+
+  var parseOptions = ["preserveWhitespace", "sanitize", "stripComments", "delimiters", "tripleDelimiters", "interpolate"];
+
+  var parser = {
+  	fromId: fromId, isHashedId: isHashedId, isParsed: isParsed, getParseOptions: getParseOptions, createHelper: template_parser__createHelper,
+  	parse: doParse
+  };
+
+  function template_parser__createHelper(parseOptions) {
+  	var helper = create(parser);
+  	helper.parse = function (template, options) {
+  		return doParse(template, options || parseOptions);
+  	};
+  	return helper;
+  }
+
+  function doParse(template, parseOptions) {
+  	if (!_parse) {
+  		throw new Error("Missing Ractive.parse - cannot parse template. Either preparse or use the version that includes the parser");
+  	}
+
+  	return _parse(template, parseOptions || this.options);
+  }
+
+  function fromId(id, options) {
+  	var template;
+
+  	if (!isClient) {
+  		if (options && options.noThrow) {
+  			return;
+  		}
+  		throw new Error("Cannot retrieve template #" + id + " as Ractive is not running in a browser.");
+  	}
+
+  	if (isHashedId(id)) {
+  		id = id.substring(1);
+  	}
+
+  	if (!(template = document.getElementById(id))) {
+  		if (options && options.noThrow) {
+  			return;
+  		}
+  		throw new Error("Could not find template element with id #" + id);
+  	}
+
+  	if (template.tagName.toUpperCase() !== "SCRIPT") {
+  		if (options && options.noThrow) {
+  			return;
+  		}
+  		throw new Error("Template element with id #" + id + ", must be a <script> element");
+  	}
+
+  	return "textContent" in template ? template.textContent : template.innerHTML;
+  }
+
+  function isHashedId(id) {
+  	return id && id[0] === "#";
+  }
+
+  function isParsed(template) {
+  	return !(typeof template === "string");
+  }
+
+  function getParseOptions(ractive) {
+  	// Could be Ractive or a Component
+  	if (ractive.defaults) {
+  		ractive = ractive.defaults;
+  	}
+
+  	return parseOptions.reduce(function (val, key) {
+  		val[key] = ractive[key];
+  		return val;
+  	}, {});
+  }
+
+  var template_parser = parser;
+
+  var templateConfigurator = {
+  	name: "template",
+
+  	extend: function extend(Parent, proto, options) {
+  		var template;
+
+  		// only assign if exists
+  		if ("template" in options) {
+  			template = options.template;
+
+  			if (typeof template === "function") {
+  				proto.template = template;
+  			} else {
+  				proto.template = parseIfString(template, proto);
+  			}
+  		}
+  	},
+
+  	init: function init(Parent, ractive, options) {
+  		var template, fn;
+
+  		// TODO because of prototypal inheritance, we might just be able to use
+  		// ractive.template, and not bother passing through the Parent object.
+  		// At present that breaks the test mocks' expectations
+  		template = "template" in options ? options.template : Parent.prototype.template;
+
+  		if (typeof template === "function") {
+  			fn = template;
+  			template = getDynamicTemplate(ractive, fn);
+
+  			ractive._config.template = {
+  				fn: fn,
+  				result: template
+  			};
+  		}
+
+  		template = parseIfString(template, ractive);
+
+  		// TODO the naming of this is confusing - ractive.template refers to [...],
+  		// but Component.prototype.template refers to {v:1,t:[],p:[]}...
+  		// it's unnecessary, because the developer never needs to access
+  		// ractive.template
+  		ractive.template = template.t;
+
+  		if (template.p) {
+  			extendPartials(ractive.partials, template.p);
+  		}
+  	},
+
+  	reset: function (ractive) {
+  		var result = resetValue(ractive),
+  		    parsed;
+
+  		if (result) {
+  			parsed = parseIfString(result, ractive);
+
+  			ractive.template = parsed.t;
+  			extendPartials(ractive.partials, parsed.p, true);
+
+  			return true;
+  		}
+  	}
+  };
+
+  function resetValue(ractive) {
+  	var initial = ractive._config.template,
+  	    result;
+
+  	// If this isn't a dynamic template, there's nothing to do
+  	if (!initial || !initial.fn) {
+  		return;
+  	}
+
+  	result = getDynamicTemplate(ractive, initial.fn);
+
+  	// TODO deep equality check to prevent unnecessary re-rendering
+  	// in the case of already-parsed templates
+  	if (result !== initial.result) {
+  		initial.result = result;
+  		result = parseIfString(result, ractive);
+  		return result;
+  	}
+  }
+
+  function getDynamicTemplate(ractive, fn) {
+  	var helper = template_template__createHelper(template_parser.getParseOptions(ractive));
+  	return fn.call(ractive, helper);
+  }
+
+  function template_template__createHelper(parseOptions) {
+  	var helper = create(template_parser);
+  	helper.parse = function (template, options) {
+  		return template_parser.parse(template, options || parseOptions);
+  	};
+  	return helper;
+  }
+
+  function parseIfString(template, ractive) {
+  	if (typeof template === "string") {
+  		// ID of an element containing the template?
+  		if (template[0] === "#") {
+  			template = template_parser.fromId(template);
+  		}
+
+  		template = _parse(template, template_parser.getParseOptions(ractive));
+  	}
+
+  	// Check that the template even exists
+  	else if (template == undefined) {
+  		throw new Error("The template cannot be " + template + ".");
+  	}
+
+  	// Check the parsed template has a version at all
+  	else if (typeof template.v !== "number") {
+  		throw new Error("The template parser was passed a non-string template, but the template doesn't have a version.  Make sure you're passing in the template you think you are.");
+  	}
+
+  	// Check we're using the correct version
+  	else if (template.v !== TEMPLATE_VERSION) {
+  		throw new Error("Mismatched template version (expected " + TEMPLATE_VERSION + ", got " + template.v + ") Please ensure you are using the latest version of Ractive.js in your build process as well as in your app");
+  	}
+
+  	return template;
+  }
+
+  function extendPartials(existingPartials, newPartials, overwrite) {
+  	if (!newPartials) return;
+
+  	// TODO there's an ambiguity here - we need to overwrite in the `reset()`
+  	// case, but not initially...
+
+  	for (var key in newPartials) {
+  		if (overwrite || !existingPartials.hasOwnProperty(key)) {
+  			existingPartials[key] = newPartials[key];
+  		}
+  	}
+  }
+
+  var template_template = templateConfigurator;
+
+  var config_registries__registryNames, Registry, registries;
+
+  config_registries__registryNames = ["adaptors", "components", "computed", "decorators", "easing", "events", "interpolators", "partials", "transitions"];
+
+  Registry = function (name, useDefaults) {
+  	this.name = name;
+  	this.useDefaults = useDefaults;
+  };
+
+  Registry.prototype = {
+  	constructor: Registry,
+
+  	extend: function (Parent, proto, options) {
+  		this.configure(this.useDefaults ? Parent.defaults : Parent, this.useDefaults ? proto : proto.constructor, options);
+  	},
+
+  	init: function () {},
+
+  	configure: function (Parent, target, options) {
+  		var name = this.name,
+  		    option = options[name],
+  		    registry;
+
+  		registry = create(Parent[name]);
+
+  		for (var key in option) {
+  			registry[key] = option[key];
+  		}
+
+  		target[name] = registry;
+  	},
+
+  	reset: function (ractive) {
+  		var registry = ractive[this.name];
+  		var changed = false;
+  		Object.keys(registry).forEach(function (key) {
+  			var item = registry[key];
+  			if (item._fn) {
+  				if (item._fn.isOwner) {
+  					registry[key] = item._fn;
+  				} else {
+  					delete registry[key];
+  				}
+  				changed = true;
+  			}
+  		});
+  		return changed;
+  	}
+  };
+
+  registries = config_registries__registryNames.map(function (name) {
+  	return new Registry(name, name === "computed");
+  });
+
+  var config_registries = registries;
+
+  /*this.configure(
+  	this.useDefaults ? Parent.defaults : Parent,
+  	ractive,
+  	options );*/
+
+  var wrapPrototype = wrap;
+
+  function wrap(parent, name, method) {
+  	if (!/_super/.test(method)) {
+  		return method;
+  	}
+
+  	var wrapper = function wrapSuper() {
+  		var superMethod = getSuperMethod(wrapper._parent, name),
+  		    hasSuper = ("_super" in this),
+  		    oldSuper = this._super,
+  		    result;
+
+  		this._super = superMethod;
+
+  		result = method.apply(this, arguments);
+
+  		if (hasSuper) {
+  			this._super = oldSuper;
+  		} else {
+  			delete this._super;
+  		}
+
+  		return result;
+  	};
+
+  	wrapper._parent = parent;
+  	wrapper._method = method;
+
+  	return wrapper;
+  }
+
+  function getSuperMethod(parent, name) {
+  	var value, method;
+
+  	if (name in parent) {
+  		value = parent[name];
+
+  		if (typeof value === "function") {
+  			method = value;
+  		} else {
+  			method = function returnValue() {
+  				return value;
+  			};
+  		}
+  	} else {
+  		method = noop;
+  	}
+
+  	return method;
+  }
+
+  var config_deprecate = deprecate;
+  function getMessage(deprecated, correct, isError) {
+  	return "options." + deprecated + " has been deprecated in favour of options." + correct + "." + (isError ? " You cannot specify both options, please use options." + correct + "." : "");
+  }
+
+  function deprecateOption(options, deprecatedOption, correct) {
+  	if (deprecatedOption in options) {
+  		if (!(correct in options)) {
+  			warnIfDebug(getMessage(deprecatedOption, correct));
+  			options[correct] = options[deprecatedOption];
+  		} else {
+  			throw new Error(getMessage(deprecatedOption, correct, true));
+  		}
+  	}
+  }
+  function deprecate(options) {
+  	deprecateOption(options, "beforeInit", "onconstruct");
+  	deprecateOption(options, "init", "onrender");
+  	deprecateOption(options, "complete", "oncomplete");
+  	deprecateOption(options, "eventDefinitions", "events");
+
+  	// Using extend with Component instead of options,
+  	// like Human.extend( Spider ) means adaptors as a registry
+  	// gets copied to options. So we have to check if actually an array
+  	if (isArray(options.adaptors)) {
+  		deprecateOption(options, "adaptors", "adapt");
+  	}
+  }
+
+  var config, order, defaultKeys, custom, isBlacklisted, isStandardKey;
+
+  custom = {
+  	adapt: custom_adapt,
+  	css: css_css,
+  	data: custom_data,
+  	template: template_template
+  };
+
+  defaultKeys = Object.keys(config_defaults);
+
+  isStandardKey = makeObj(defaultKeys.filter(function (key) {
+  	return !custom[key];
+  }));
+
+  // blacklisted keys that we don't double extend
+  isBlacklisted = makeObj(defaultKeys.concat(config_registries.map(function (r) {
+  	return r.name;
+  })));
+
+  order = [].concat(defaultKeys.filter(function (key) {
+  	return !config_registries[key] && !custom[key];
+  }), config_registries, custom.data, custom.template, custom.css);
+
+  config = {
+  	extend: function (Parent, proto, options) {
+  		return configure("extend", Parent, proto, options);
+  	},
+
+  	init: function (Parent, ractive, options) {
+  		return configure("init", Parent, ractive, options);
+  	},
+
+  	reset: function (ractive) {
+  		return order.filter(function (c) {
+  			return c.reset && c.reset(ractive);
+  		}).map(function (c) {
+  			return c.name;
+  		});
+  	},
+
+  	// this defines the order. TODO this isn't used anywhere in the codebase,
+  	// only in the test suite - should get rid of it
+  	order: order };
+
+  function configure(method, Parent, target, options) {
+  	config_deprecate(options);
+
+  	for (var key in options) {
+  		if (isStandardKey.hasOwnProperty(key)) {
+  			var value = options[key];
+
+  			// warn the developer if they passed a function and ignore its value
+
+  			// NOTE: we allow some functions on "el" because we duck type element lists
+  			// and some libraries or ef'ed-up virtual browsers (phantomJS) return a
+  			// function object as the result of querySelector methods
+  			if (key !== "el" && typeof value === "function") {
+  				warnIfDebug("" + key + " is a Ractive option that does not expect a function and will be ignored", method === "init" ? target : null);
+  			} else {
+  				target[key] = value;
+  			}
+  		}
+  	}
+
+  	config_registries.forEach(function (registry) {
+  		registry[method](Parent, target, options);
+  	});
+
+  	custom_adapt[method](Parent, target, options);
+  	template_template[method](Parent, target, options);
+  	css_css[method](Parent, target, options);
+
+  	extendOtherMethods(Parent.prototype, target, options);
+  }
+
+  function extendOtherMethods(parent, target, options) {
+  	for (var key in options) {
+  		if (!isBlacklisted[key] && options.hasOwnProperty(key)) {
+  			var member = options[key];
+
+  			// if this is a method that overwrites a method, wrap it:
+  			if (typeof member === "function") {
+  				member = wrapPrototype(parent, key, member);
+  			}
+
+  			target[key] = member;
+  		}
+  	}
+  }
+
+  function makeObj(array) {
+  	var obj = {};
+  	array.forEach(function (x) {
+  		return obj[x] = true;
+  	});
+  	return obj;
+  }
+
+  var config_config = config;
+
+  var prototype_bubble = Fragment$bubble;
+
+  function Fragment$bubble() {
+  	this.dirtyValue = this.dirtyArgs = true;
+
+  	if (this.bound && typeof this.owner.bubble === "function") {
+  		this.owner.bubble();
+  	}
+  }
+
+  var Fragment_prototype_detach = Fragment$detach;
+
+  function Fragment$detach() {
+  	var docFrag;
+
+  	if (this.items.length === 1) {
+  		return this.items[0].detach();
+  	}
+
+  	docFrag = document.createDocumentFragment();
+
+  	this.items.forEach(function (item) {
+  		var node = item.detach();
+
+  		// TODO The if {...} wasn't previously required - it is now, because we're
+  		// forcibly detaching everything to reorder sections after an update. That's
+  		// a non-ideal brute force approach, implemented to get all the tests to pass
+  		// - as soon as it's replaced with something more elegant, this should
+  		// revert to `docFrag.appendChild( item.detach() )`
+  		if (node) {
+  			docFrag.appendChild(node);
+  		}
+  	});
+
+  	return docFrag;
+  }
+
+  var Fragment_prototype_find = Fragment$find;
+
+  function Fragment$find(selector) {
+  	var i, len, item, queryResult;
+
+  	if (this.items) {
+  		len = this.items.length;
+  		for (i = 0; i < len; i += 1) {
+  			item = this.items[i];
+
+  			if (item.find && (queryResult = item.find(selector))) {
+  				return queryResult;
+  			}
+  		}
+
+  		return null;
+  	}
+  }
+
+  var Fragment_prototype_findAll = Fragment$findAll;
+
+  function Fragment$findAll(selector, query) {
+  	var i, len, item;
+
+  	if (this.items) {
+  		len = this.items.length;
+  		for (i = 0; i < len; i += 1) {
+  			item = this.items[i];
+
+  			if (item.findAll) {
+  				item.findAll(selector, query);
+  			}
+  		}
+  	}
+
+  	return query;
+  }
+
+  var Fragment_prototype_findAllComponents = Fragment$findAllComponents;
+
+  function Fragment$findAllComponents(selector, query) {
+  	var i, len, item;
+
+  	if (this.items) {
+  		len = this.items.length;
+  		for (i = 0; i < len; i += 1) {
+  			item = this.items[i];
+
+  			if (item.findAllComponents) {
+  				item.findAllComponents(selector, query);
+  			}
+  		}
+  	}
+
+  	return query;
+  }
+
+  var Fragment_prototype_findComponent = Fragment$findComponent;
+
+  function Fragment$findComponent(selector) {
+  	var len, i, item, queryResult;
+
+  	if (this.items) {
+  		len = this.items.length;
+  		for (i = 0; i < len; i += 1) {
+  			item = this.items[i];
+
+  			if (item.findComponent && (queryResult = item.findComponent(selector))) {
+  				return queryResult;
+  			}
+  		}
+
+  		return null;
+  	}
+  }
+
+  var prototype_findNextNode = Fragment$findNextNode;
+
+  function Fragment$findNextNode(item) {
+  	var index = item.index,
+  	    node;
+
+  	if (this.items[index + 1]) {
+  		node = this.items[index + 1].firstNode();
+  	}
+
+  	// if this is the root fragment, and there are no more items,
+  	// it means we're at the end...
+  	else if (this.owner === this.root) {
+  		if (!this.owner.component) {
+  			// TODO but something else could have been appended to
+  			// this.root.el, no?
+  			node = null;
+  		}
+
+  		// ...unless this is a component
+  		else {
+  			node = this.owner.component.findNextNode();
+  		}
+  	} else {
+  		node = this.owner.findNextNode(this);
+  	}
+
+  	return node;
+  }
+
+  var prototype_firstNode = Fragment$firstNode;
+
+  function Fragment$firstNode() {
+  	if (this.items && this.items[0]) {
+  		return this.items[0].firstNode();
+  	}
+
+  	return null;
+  }
+
+  var shared_processItems = processItems;
+
+  function processItems(items, values, guid, counter) {
+  	counter = counter || 0;
+
+  	return items.map(function (item) {
+  		var placeholderId, wrapped, value;
+
+  		if (item.text) {
+  			return item.text;
+  		}
+
+  		if (item.fragments) {
+  			return item.fragments.map(function (fragment) {
+  				return processItems(fragment.items, values, guid, counter);
+  			}).join("");
+  		}
+
+  		placeholderId = guid + "-" + counter++;
+
+  		if (item.keypath && (wrapped = item.root.viewmodel.wrapped[item.keypath.str])) {
+  			value = wrapped.value;
+  		} else {
+  			value = item.getValue();
+  		}
+
+  		values[placeholderId] = value;
+
+  		return "${" + placeholderId + "}";
+  	}).join("");
+  }
+
+  var getArgsList = Fragment$getArgsList;
+  function Fragment$getArgsList() {
+  	var values, source, parsed, result;
+
+  	if (this.dirtyArgs) {
+  		source = shared_processItems(this.items, values = {}, this.root._guid);
+  		parsed = parseJSON("[" + source + "]", values);
+
+  		if (!parsed) {
+  			result = [this.toString()];
+  		} else {
+  			result = parsed.value;
+  		}
+
+  		this.argsList = result;
+  		this.dirtyArgs = false;
+  	}
+
+  	return this.argsList;
+  }
+
+  var getNode = Fragment$getNode;
+
+  function Fragment$getNode() {
+  	var fragment = this;
+
+  	do {
+  		if (fragment.pElement) {
+  			return fragment.pElement.node;
+  		}
+  	} while (fragment = fragment.parent);
+
+  	return this.root.detached || this.root.el;
+  }
+
+  var prototype_getValue = Fragment$getValue;
+  function Fragment$getValue() {
+  	var values, source, parsed, result;
+
+  	if (this.dirtyValue) {
+  		source = shared_processItems(this.items, values = {}, this.root._guid);
+  		parsed = parseJSON(source, values);
+
+  		if (!parsed) {
+  			result = this.toString();
+  		} else {
+  			result = parsed.value;
+  		}
+
+  		this.value = result;
+  		this.dirtyValue = false;
+  	}
+
+  	return this.value;
+  }
+
+  var shared_detach = function () {
+  	return detachNode(this.node);
+  };
+
+  var Text = function (options) {
+  	this.type = TEXT;
+  	this.text = options.template;
+  };
+
+  Text.prototype = {
+  	detach: shared_detach,
+
+  	firstNode: function () {
+  		return this.node;
+  	},
+
+  	render: function () {
+  		if (!this.node) {
+  			this.node = document.createTextNode(this.text);
+  		}
+
+  		return this.node;
+  	},
+
+  	toString: function (escape) {
+  		return escape ? escapeHtml(this.text) : this.text;
+  	},
+
+  	unrender: function (shouldDestroy) {
+  		if (shouldDestroy) {
+  			return this.detach();
+  		}
+  	}
+  };
+
+  var items_Text = Text;
+
+  var shared_unbind = shared_unbind__unbind;
+
+  function shared_unbind__unbind() {
+  	if (this.registered) {
+  		// this was registered as a dependant
+  		this.root.viewmodel.unregister(this.keypath, this);
+  	}
+
+  	if (this.resolver) {
+  		this.resolver.unbind();
+  	}
+  }
+
+  var Mustache_getValue = Mustache$getValue;
+
+  function Mustache$getValue() {
+  	return this.value;
+  }
+
+  var ReferenceResolver = function (owner, ref, callback) {
+  	var keypath;
+
+  	this.ref = ref;
+  	this.resolved = false;
+
+  	this.root = owner.root;
+  	this.parentFragment = owner.parentFragment;
+  	this.callback = callback;
+
+  	keypath = shared_resolveRef(owner.root, ref, owner.parentFragment);
+  	if (keypath != undefined) {
+  		this.resolve(keypath);
+  	} else {
+  		global_runloop.addUnresolved(this);
+  	}
+  };
+
+  ReferenceResolver.prototype = {
+  	resolve: function (keypath) {
+  		if (this.keypath && !keypath) {
+  			// it was resolved, and now it's not. Can happen if e.g. `bar` in
+  			// `{{foo[bar]}}` becomes undefined
+  			global_runloop.addUnresolved(this);
+  		}
+
+  		this.resolved = true;
+
+  		this.keypath = keypath;
+  		this.callback(keypath);
+  	},
+
+  	forceResolution: function () {
+  		this.resolve(getKeypath(this.ref));
+  	},
+
+  	rebind: function (oldKeypath, newKeypath) {
+  		var keypath;
+
+  		if (this.keypath != undefined) {
+  			keypath = this.keypath.replace(oldKeypath, newKeypath);
+  			// was a new keypath created?
+  			if (keypath !== undefined) {
+  				// resolve it
+  				this.resolve(keypath);
+  			}
+  		}
+  	},
+
+  	unbind: function () {
+  		if (!this.resolved) {
+  			global_runloop.removeUnresolved(this);
+  		}
+  	}
+  };
+
+  var Resolvers_ReferenceResolver = ReferenceResolver;
+
+  var SpecialResolver = function (owner, ref, callback) {
+  	this.parentFragment = owner.parentFragment;
+  	this.ref = ref;
+  	this.callback = callback;
+
+  	this.rebind();
+  };
+
+  var props = {
+  	"@keypath": { prefix: "c", prop: ["context"] },
+  	"@index": { prefix: "i", prop: ["index"] },
+  	"@key": { prefix: "k", prop: ["key", "index"] }
+  };
+
+  function getProp(target, prop) {
+  	var value;
+  	for (var i = 0; i < prop.prop.length; i++) {
+  		if ((value = target[prop.prop[i]]) !== undefined) {
+  			return value;
+  		}
+  	}
+  }
+
+  SpecialResolver.prototype = {
+  	rebind: function () {
+  		var ref = this.ref,
+  		    fragment = this.parentFragment,
+  		    prop = props[ref],
+  		    value;
+
+  		if (!prop) {
+  			throw new Error("Unknown special reference \"" + ref + "\" - valid references are @index, @key and @keypath");
+  		}
+
+  		// have we already found the nearest parent?
+  		if (this.cached) {
+  			return this.callback(getKeypath("@" + prop.prefix + getProp(this.cached, prop)));
+  		}
+
+  		// special case for indices, which may cross component boundaries
+  		if (prop.prop.indexOf("index") !== -1 || prop.prop.indexOf("key") !== -1) {
+  			while (fragment) {
+  				if (fragment.owner.currentSubtype === SECTION_EACH && (value = getProp(fragment, prop)) !== undefined) {
+  					this.cached = fragment;
+
+  					fragment.registerIndexRef(this);
+
+  					return this.callback(getKeypath("@" + prop.prefix + value));
+  				}
+
+  				// watch for component boundaries
+  				if (!fragment.parent && fragment.owner && fragment.owner.component && fragment.owner.component.parentFragment && !fragment.owner.component.instance.isolated) {
+  					fragment = fragment.owner.component.parentFragment;
+  				} else {
+  					fragment = fragment.parent;
+  				}
+  			}
+  		} else {
+  			while (fragment) {
+  				if ((value = getProp(fragment, prop)) !== undefined) {
+  					return this.callback(getKeypath("@" + prop.prefix + value.str));
+  				}
+
+  				fragment = fragment.parent;
+  			}
+  		}
+  	},
+
+  	unbind: function () {
+  		if (this.cached) {
+  			this.cached.unregisterIndexRef(this);
+  		}
+  	}
+  };
+
+  var Resolvers_SpecialResolver = SpecialResolver;
+
+  var IndexResolver = function (owner, ref, callback) {
+  	this.parentFragment = owner.parentFragment;
+  	this.ref = ref;
+  	this.callback = callback;
+
+  	ref.ref.fragment.registerIndexRef(this);
+
+  	this.rebind();
+  };
+
+  IndexResolver.prototype = {
+  	rebind: function () {
+  		var index,
+  		    ref = this.ref.ref;
+
+  		if (ref.ref.t === "k") {
+  			index = "k" + ref.fragment.key;
+  		} else {
+  			index = "i" + ref.fragment.index;
+  		}
+
+  		if (index !== undefined) {
+  			this.callback(getKeypath("@" + index));
+  		}
+  	},
+
+  	unbind: function () {
+  		this.ref.ref.fragment.unregisterIndexRef(this);
+  	}
+  };
+
+  var Resolvers_IndexResolver = IndexResolver;
+
+  var Resolvers_findIndexRefs = findIndexRefs;
+
+  function findIndexRefs(fragment, refName) {
+  	var result = {},
+  	    refs,
+  	    fragRefs,
+  	    ref,
+  	    i,
+  	    owner,
+  	    hit = false;
+
+  	if (!refName) {
+  		result.refs = refs = {};
+  	}
+
+  	while (fragment) {
+  		if ((owner = fragment.owner) && (fragRefs = owner.indexRefs)) {
+
+  			// we're looking for a particular ref, and it's here
+  			if (refName && (ref = owner.getIndexRef(refName))) {
+  				result.ref = {
+  					fragment: fragment,
+  					ref: ref
+  				};
+  				return result;
+  			}
+
+  			// we're collecting refs up-tree
+  			else if (!refName) {
+  				for (i in fragRefs) {
+  					ref = fragRefs[i];
+
+  					// don't overwrite existing refs - they should shadow parents
+  					if (!refs[ref.n]) {
+  						hit = true;
+  						refs[ref.n] = {
+  							fragment: fragment,
+  							ref: ref
+  						};
+  					}
+  				}
+  			}
+  		}
+
+  		// watch for component boundaries
+  		if (!fragment.parent && fragment.owner && fragment.owner.component && fragment.owner.component.parentFragment && !fragment.owner.component.instance.isolated) {
+  			result.componentBoundary = true;
+  			fragment = fragment.owner.component.parentFragment;
+  		} else {
+  			fragment = fragment.parent;
+  		}
+  	}
+
+  	if (!hit) {
+  		return undefined;
+  	} else {
+  		return result;
+  	}
+  }
+
+  findIndexRefs.resolve = function resolve(indices) {
+  	var refs = {},
+  	    k,
+  	    ref;
+
+  	for (k in indices.refs) {
+  		ref = indices.refs[k];
+  		refs[ref.ref.n] = ref.ref.t === "k" ? ref.fragment.key : ref.fragment.index;
+  	}
+
+  	return refs;
+  };
+
+  var Resolvers_createReferenceResolver = createReferenceResolver;
+  function createReferenceResolver(owner, ref, callback) {
+  	var indexRef;
+
+  	if (ref.charAt(0) === "@") {
+  		return new Resolvers_SpecialResolver(owner, ref, callback);
+  	}
+
+  	if (indexRef = Resolvers_findIndexRefs(owner.parentFragment, ref)) {
+  		return new Resolvers_IndexResolver(owner, indexRef, callback);
+  	}
+
+  	return new Resolvers_ReferenceResolver(owner, ref, callback);
+  }
+
+  var shared_getFunctionFromString = getFunctionFromString;
+  var cache = {};
+  function getFunctionFromString(str, i) {
+  	var fn, args;
+
+  	if (cache[str]) {
+  		return cache[str];
+  	}
+
+  	args = [];
+  	while (i--) {
+  		args[i] = "_" + i;
+  	}
+
+  	fn = new Function(args.join(","), "return(" + str + ")");
+
+  	cache[str] = fn;
+  	return fn;
+  }
+
+  var ExpressionResolver,
+      Resolvers_ExpressionResolver__bind = Function.prototype.bind;
+
+  ExpressionResolver = function (owner, parentFragment, expression, callback) {
+  	var _this = this;
+
+  	var ractive;
+
+  	ractive = owner.root;
+
+  	this.root = ractive;
+  	this.parentFragment = parentFragment;
+  	this.callback = callback;
+  	this.owner = owner;
+  	this.str = expression.s;
+  	this.keypaths = [];
+
+  	// Create resolvers for each reference
+  	this.pending = expression.r.length;
+  	this.refResolvers = expression.r.map(function (ref, i) {
+  		return Resolvers_createReferenceResolver(_this, ref, function (keypath) {
+  			_this.resolve(i, keypath);
+  		});
+  	});
+
+  	this.ready = true;
+  	this.bubble();
+  };
+
+  ExpressionResolver.prototype = {
+  	bubble: function () {
+  		if (!this.ready) {
+  			return;
+  		}
+
+  		this.uniqueString = getUniqueString(this.str, this.keypaths);
+  		this.keypath = createExpressionKeypath(this.uniqueString);
+
+  		this.createEvaluator();
+  		this.callback(this.keypath);
+  	},
+
+  	unbind: function () {
+  		var resolver;
+
+  		while (resolver = this.refResolvers.pop()) {
+  			resolver.unbind();
+  		}
+  	},
+
+  	resolve: function (index, keypath) {
+  		this.keypaths[index] = keypath;
+  		this.bubble();
+  	},
+
+  	createEvaluator: function () {
+  		var _this = this;
+
+  		var computation, valueGetters, signature, keypath, fn;
+
+  		keypath = this.keypath;
+  		computation = this.root.viewmodel.computations[keypath.str];
+
+  		// only if it doesn't exist yet!
+  		if (!computation) {
+  			fn = shared_getFunctionFromString(this.str, this.refResolvers.length);
+
+  			valueGetters = this.keypaths.map(function (keypath) {
+  				var value;
+
+  				if (keypath === "undefined") {
+  					return function () {
+  						return undefined;
+  					};
+  				}
+
+  				// 'special' keypaths encode a value
+  				if (keypath.isSpecial) {
+  					value = keypath.value;
+  					return function () {
+  						return value;
+  					};
+  				}
+
+  				return function () {
+  					var value = _this.root.viewmodel.get(keypath, { noUnwrap: true, fullRootGet: true });
+  					if (typeof value === "function") {
+  						value = wrapFunction(value, _this.root);
+  					}
+  					return value;
+  				};
+  			});
+
+  			signature = {
+  				deps: this.keypaths.filter(isValidDependency),
+  				getter: function () {
+  					var args = valueGetters.map(call);
+  					return fn.apply(null, args);
+  				}
+  			};
+
+  			computation = this.root.viewmodel.compute(keypath, signature);
+  		} else {
+  			this.root.viewmodel.mark(keypath);
+  		}
+  	},
+
+  	rebind: function (oldKeypath, newKeypath) {
+  		// TODO only bubble once, no matter how many references are affected by the rebind
+  		this.refResolvers.forEach(function (r) {
+  			return r.rebind(oldKeypath, newKeypath);
+  		});
+  	}
+  };
+
+  var Resolvers_ExpressionResolver = ExpressionResolver;
+
+  function call(value) {
+  	return value.call();
+  }
+
+  function getUniqueString(str, keypaths) {
+  	// get string that is unique to this expression
+  	return str.replace(/_([0-9]+)/g, function (match, $1) {
+  		var keypath, value;
+
+  		// make sure we're not replacing a non-keypath _[0-9]
+  		if (+$1 >= keypaths.length) {
+  			return "_" + $1;
+  		}
+
+  		keypath = keypaths[$1];
+
+  		if (keypath === undefined) {
+  			return "undefined";
+  		}
+
+  		if (keypath.isSpecial) {
+  			value = keypath.value;
+  			return typeof value === "number" ? value : "\"" + value + "\"";
+  		}
+
+  		return keypath.str;
+  	});
+  }
+
+  function createExpressionKeypath(uniqueString) {
+  	// Sanitize by removing any periods or square brackets. Otherwise
+  	// we can't split the keypath into keys!
+  	// Remove asterisks too, since they mess with pattern observers
+  	return getKeypath("${" + uniqueString.replace(/[\.\[\]]/g, "-").replace(/\*/, "#MUL#") + "}");
+  }
+
+  function isValidDependency(keypath) {
+  	return keypath !== undefined && keypath[0] !== "@";
+  }
+
+  function wrapFunction(fn, ractive) {
+  	var wrapped, prop, key;
+
+  	if (fn.__ractive_nowrap) {
+  		return fn;
+  	}
+
+  	prop = "__ractive_" + ractive._guid;
+  	wrapped = fn[prop];
+
+  	if (wrapped) {
+  		return wrapped;
+  	} else if (/this/.test(fn.toString())) {
+  		defineProperty(fn, prop, {
+  			value: Resolvers_ExpressionResolver__bind.call(fn, ractive),
+  			configurable: true
+  		});
+
+  		// Add properties/methods to wrapped function
+  		for (key in fn) {
+  			if (fn.hasOwnProperty(key)) {
+  				fn[prop][key] = fn[key];
+  			}
+  		}
+
+  		ractive._boundFunctions.push({
+  			fn: fn,
+  			prop: prop
+  		});
+
+  		return fn[prop];
+  	}
+
+  	defineProperty(fn, "__ractive_nowrap", {
+  		value: fn
+  	});
+
+  	return fn.__ractive_nowrap;
+  }
+
+  var MemberResolver = function (template, resolver, parentFragment) {
+  	var _this = this;
+
+  	this.resolver = resolver;
+  	this.root = resolver.root;
+  	this.parentFragment = parentFragment;
+  	this.viewmodel = resolver.root.viewmodel;
+
+  	if (typeof template === "string") {
+  		this.value = template;
+  	}
+
+  	// Simple reference?
+  	else if (template.t === REFERENCE) {
+  		this.refResolver = Resolvers_createReferenceResolver(this, template.n, function (keypath) {
+  			_this.resolve(keypath);
+  		});
+  	}
+
+  	// Otherwise we have an expression in its own right
+  	else {
+  		new Resolvers_ExpressionResolver(resolver, parentFragment, template, function (keypath) {
+  			_this.resolve(keypath);
+  		});
+  	}
+  };
+
+  MemberResolver.prototype = {
+  	resolve: function (keypath) {
+  		if (this.keypath) {
+  			this.viewmodel.unregister(this.keypath, this);
+  		}
+
+  		this.keypath = keypath;
+  		this.value = this.viewmodel.get(keypath);
+
+  		this.bind();
+
+  		this.resolver.bubble();
+  	},
+
+  	bind: function () {
+  		this.viewmodel.register(this.keypath, this);
+  	},
+
+  	rebind: function (oldKeypath, newKeypath) {
+  		if (this.refResolver) {
+  			this.refResolver.rebind(oldKeypath, newKeypath);
+  		}
+  	},
+
+  	setValue: function (value) {
+  		this.value = value;
+  		this.resolver.bubble();
+  	},
+
+  	unbind: function () {
+  		if (this.keypath) {
+  			this.viewmodel.unregister(this.keypath, this);
+  		}
+
+  		if (this.refResolver) {
+  			this.refResolver.unbind();
+  		}
+  	},
+
+  	forceResolution: function () {
+  		if (this.refResolver) {
+  			this.refResolver.forceResolution();
+  		}
+  	}
+  };
+
+  var ReferenceExpressionResolver_MemberResolver = MemberResolver;
+
+  var ReferenceExpressionResolver = function (mustache, template, callback) {
+  	var _this = this;
+
+  	var ractive, ref, keypath, parentFragment;
+
+  	this.parentFragment = parentFragment = mustache.parentFragment;
+  	this.root = ractive = mustache.root;
+  	this.mustache = mustache;
+
+  	this.ref = ref = template.r;
+  	this.callback = callback;
+
+  	this.unresolved = [];
+
+  	// Find base keypath
+  	if (keypath = shared_resolveRef(ractive, ref, parentFragment)) {
+  		this.base = keypath;
+  	} else {
+  		this.baseResolver = new Resolvers_ReferenceResolver(this, ref, function (keypath) {
+  			_this.base = keypath;
+  			_this.baseResolver = null;
+  			_this.bubble();
+  		});
+  	}
+
+  	// Find values for members, or mark them as unresolved
+  	this.members = template.m.map(function (template) {
+  		return new ReferenceExpressionResolver_MemberResolver(template, _this, parentFragment);
+  	});
+
+  	this.ready = true;
+  	this.bubble(); // trigger initial resolution if possible
+  };
+
+  ReferenceExpressionResolver.prototype = {
+  	getKeypath: function () {
+  		var values = this.members.map(ReferenceExpressionResolver_ReferenceExpressionResolver__getValue);
+
+  		if (!values.every(isDefined) || this.baseResolver) {
+  			return null;
+  		}
+
+  		return this.base.join(values.join("."));
+  	},
+
+  	bubble: function () {
+  		if (!this.ready || this.baseResolver) {
+  			return;
+  		}
+
+  		this.callback(this.getKeypath());
+  	},
+
+  	unbind: function () {
+  		this.members.forEach(methodCallers__unbind);
+  	},
+
+  	rebind: function (oldKeypath, newKeypath) {
+  		var changed;
+
+  		if (this.base) {
+  			var newBase = this.base.replace(oldKeypath, newKeypath);
+  			if (newBase && newBase !== this.base) {
+  				this.base = newBase;
+  				changed = true;
+  			}
+  		}
+
+  		this.members.forEach(function (members) {
+  			if (members.rebind(oldKeypath, newKeypath)) {
+  				changed = true;
+  			}
+  		});
+
+  		if (changed) {
+  			this.bubble();
+  		}
+  	},
+
+  	forceResolution: function () {
+  		if (this.baseResolver) {
+  			this.base = getKeypath(this.ref);
+
+  			this.baseResolver.unbind();
+  			this.baseResolver = null;
+  		}
+
+  		this.members.forEach(forceResolution);
+  		this.bubble();
+  	}
+  };
+
+  function ReferenceExpressionResolver_ReferenceExpressionResolver__getValue(member) {
+  	return member.value;
+  }
+
+  function isDefined(value) {
+  	return value != undefined;
+  }
+
+  function forceResolution(member) {
+  	member.forceResolution();
+  }
+
+  var ReferenceExpressionResolver_ReferenceExpressionResolver = ReferenceExpressionResolver;
+
+  var Mustache_initialise = Mustache$init;
+  function Mustache$init(mustache, options) {
+
+  	var ref, parentFragment, template;
+
+  	parentFragment = options.parentFragment;
+  	template = options.template;
+
+  	mustache.root = parentFragment.root;
+  	mustache.parentFragment = parentFragment;
+  	mustache.pElement = parentFragment.pElement;
+
+  	mustache.template = options.template;
+  	mustache.index = options.index || 0;
+  	mustache.isStatic = options.template.s;
+
+  	mustache.type = options.template.t;
+
+  	mustache.registered = false;
+
+  	// if this is a simple mustache, with a reference, we just need to resolve
+  	// the reference to a keypath
+  	if (ref = template.r) {
+  		mustache.resolver = Resolvers_createReferenceResolver(mustache, ref, resolve);
+  	}
+
+  	// if it's an expression, we have a bit more work to do
+  	if (options.template.x) {
+  		mustache.resolver = new Resolvers_ExpressionResolver(mustache, parentFragment, options.template.x, resolveAndRebindChildren);
+  	}
+
+  	if (options.template.rx) {
+  		mustache.resolver = new ReferenceExpressionResolver_ReferenceExpressionResolver(mustache, options.template.rx, resolveAndRebindChildren);
+  	}
+
+  	// Special case - inverted sections
+  	if (mustache.template.n === SECTION_UNLESS && !mustache.hasOwnProperty("value")) {
+  		mustache.setValue(undefined);
+  	}
+
+  	function resolve(keypath) {
+  		mustache.resolve(keypath);
+  	}
+
+  	function resolveAndRebindChildren(newKeypath) {
+  		var oldKeypath = mustache.keypath;
+
+  		if (newKeypath != oldKeypath) {
+  			mustache.resolve(newKeypath);
+
+  			if (oldKeypath !== undefined) {
+  				mustache.fragments && mustache.fragments.forEach(function (f) {
+  					f.rebind(oldKeypath, newKeypath);
+  				});
+  			}
+  		}
+  	}
+  }
+
+  var Mustache_resolve = Mustache$resolve;
+
+  function Mustache$resolve(keypath) {
+  	var wasResolved, value, twowayBinding;
+
+  	// 'Special' keypaths, e.g. @foo or @7, encode a value
+  	if (keypath && keypath.isSpecial) {
+  		this.keypath = keypath;
+  		this.setValue(keypath.value);
+  		return;
+  	}
+
+  	// If we resolved previously, we need to unregister
+  	if (this.registered) {
+  		// undefined or null
+  		this.root.viewmodel.unregister(this.keypath, this);
+  		this.registered = false;
+
+  		wasResolved = true;
+  	}
+
+  	this.keypath = keypath;
+
+  	// If the new keypath exists, we need to register
+  	// with the viewmodel
+  	if (keypath != undefined) {
+  		// undefined or null
+  		value = this.root.viewmodel.get(keypath);
+  		this.root.viewmodel.register(keypath, this);
+
+  		this.registered = true;
+  	}
+
+  	// Either way we need to queue up a render (`value`
+  	// will be `undefined` if there's no keypath)
+  	this.setValue(value);
+
+  	// Two-way bindings need to point to their new target keypath
+  	if (wasResolved && (twowayBinding = this.twowayBinding)) {
+  		twowayBinding.rebound();
+  	}
+  }
+
+  var Mustache_rebind = Mustache$rebind;
+
+  function Mustache$rebind(oldKeypath, newKeypath) {
+  	// Children first
+  	if (this.fragments) {
+  		this.fragments.forEach(function (f) {
+  			return f.rebind(oldKeypath, newKeypath);
+  		});
+  	}
+
+  	// Expression mustache?
+  	if (this.resolver) {
+  		this.resolver.rebind(oldKeypath, newKeypath);
+  	}
+  }
+
+  var Mustache = {
+  	getValue: Mustache_getValue,
+  	init: Mustache_initialise,
+  	resolve: Mustache_resolve,
+  	rebind: Mustache_rebind
+  };
+
+  var Interpolator = function (options) {
+  	this.type = INTERPOLATOR;
+  	Mustache.init(this, options);
+  };
+
+  Interpolator.prototype = {
+  	update: function () {
+  		this.node.data = this.value == undefined ? "" : this.value;
+  	},
+  	resolve: Mustache.resolve,
+  	rebind: Mustache.rebind,
+  	detach: shared_detach,
+
+  	unbind: shared_unbind,
+
+  	render: function () {
+  		if (!this.node) {
+  			this.node = document.createTextNode(safeToStringValue(this.value));
+  		}
+
+  		return this.node;
+  	},
+
+  	unrender: function (shouldDestroy) {
+  		if (shouldDestroy) {
+  			detachNode(this.node);
+  		}
+  	},
+
+  	getValue: Mustache.getValue,
+
+  	// TEMP
+  	setValue: function (value) {
+  		var wrapper;
+
+  		// TODO is there a better way to approach this?
+  		if (this.keypath && (wrapper = this.root.viewmodel.wrapped[this.keypath.str])) {
+  			value = wrapper.get();
+  		}
+
+  		if (!isEqual(value, this.value)) {
+  			this.value = value;
+  			this.parentFragment.bubble();
+
+  			if (this.node) {
+  				global_runloop.addView(this);
+  			}
+  		}
+  	},
+
+  	firstNode: function () {
+  		return this.node;
+  	},
+
+  	toString: function (escape) {
+  		var string = "" + safeToStringValue(this.value);
+  		return escape ? escapeHtml(string) : string;
+  	}
+  };
+
+  var items_Interpolator = Interpolator;
+
+  var Section_prototype_bubble = Section$bubble;
+
+  function Section$bubble() {
+  	this.parentFragment.bubble();
+  }
+
+  var Section_prototype_detach = Section$detach;
+
+  function Section$detach() {
+  	var docFrag;
+
+  	if (this.fragments.length === 1) {
+  		return this.fragments[0].detach();
+  	}
+
+  	docFrag = document.createDocumentFragment();
+
+  	this.fragments.forEach(function (item) {
+  		docFrag.appendChild(item.detach());
+  	});
+
+  	return docFrag;
+  }
+
+  var find = Section$find;
+
+  function Section$find(selector) {
+  	var i, len, queryResult;
+
+  	len = this.fragments.length;
+  	for (i = 0; i < len; i += 1) {
+  		if (queryResult = this.fragments[i].find(selector)) {
+  			return queryResult;
+  		}
+  	}
+
+  	return null;
+  }
+
+  var findAll = Section$findAll;
+
+  function Section$findAll(selector, query) {
+  	var i, len;
+
+  	len = this.fragments.length;
+  	for (i = 0; i < len; i += 1) {
+  		this.fragments[i].findAll(selector, query);
+  	}
+  }
+
+  var findAllComponents = Section$findAllComponents;
+
+  function Section$findAllComponents(selector, query) {
+  	var i, len;
+
+  	len = this.fragments.length;
+  	for (i = 0; i < len; i += 1) {
+  		this.fragments[i].findAllComponents(selector, query);
+  	}
+  }
+
+  var findComponent = Section$findComponent;
+
+  function Section$findComponent(selector) {
+  	var i, len, queryResult;
+
+  	len = this.fragments.length;
+  	for (i = 0; i < len; i += 1) {
+  		if (queryResult = this.fragments[i].findComponent(selector)) {
+  			return queryResult;
+  		}
+  	}
+
+  	return null;
+  }
+
+  var findNextNode = Section$findNextNode;
+
+  function Section$findNextNode(fragment) {
+  	if (this.fragments[fragment.index + 1]) {
+  		return this.fragments[fragment.index + 1].firstNode();
+  	}
+
+  	return this.parentFragment.findNextNode(this);
+  }
+
+  var firstNode = Section$firstNode;
+
+  function Section$firstNode() {
+  	var len, i, node;
+
+  	if (len = this.fragments.length) {
+  		for (i = 0; i < len; i += 1) {
+  			if (node = this.fragments[i].firstNode()) {
+  				return node;
+  			}
+  		}
+  	}
+
+  	return this.parentFragment.findNextNode(this);
+  }
+
+  var shuffle = Section$shuffle;
+
+  function Section$shuffle(newIndices) {
+  	var _this = this;
+
+  	var parentFragment, firstChange, i, newLength, reboundFragments, fragmentOptions, fragment;
+
+  	// short circuit any double-updates, and ensure that this isn't applied to
+  	// non-list sections
+  	if (this.shuffling || this.unbound || this.currentSubtype !== SECTION_EACH) {
+  		return;
+  	}
+
+  	this.shuffling = true;
+  	global_runloop.scheduleTask(function () {
+  		return _this.shuffling = false;
+  	});
+
+  	parentFragment = this.parentFragment;
+
+  	reboundFragments = [];
+
+  	// TODO: need to update this
+  	// first, rebind existing fragments
+  	newIndices.forEach(function (newIndex, oldIndex) {
+  		var fragment, by, oldKeypath, newKeypath, deps;
+
+  		if (newIndex === oldIndex) {
+  			reboundFragments[newIndex] = _this.fragments[oldIndex];
+  			return;
+  		}
+
+  		fragment = _this.fragments[oldIndex];
+
+  		if (firstChange === undefined) {
+  			firstChange = oldIndex;
+  		}
+
+  		// does this fragment need to be torn down?
+  		if (newIndex === -1) {
+  			_this.fragmentsToUnrender.push(fragment);
+  			fragment.unbind();
+  			return;
+  		}
+
+  		// Otherwise, it needs to be rebound to a new index
+  		by = newIndex - oldIndex;
+  		oldKeypath = _this.keypath.join(oldIndex);
+  		newKeypath = _this.keypath.join(newIndex);
+
+  		fragment.index = newIndex;
+
+  		// notify any registered index refs directly
+  		if (deps = fragment.registeredIndexRefs) {
+  			deps.forEach(shuffle__blindRebind);
+  		}
+
+  		fragment.rebind(oldKeypath, newKeypath);
+  		reboundFragments[newIndex] = fragment;
+  	});
+
+  	newLength = this.root.viewmodel.get(this.keypath).length;
+
+  	// If nothing changed with the existing fragments, then we start adding
+  	// new fragments at the end...
+  	if (firstChange === undefined) {
+  		// ...unless there are no new fragments to add
+  		if (this.length === newLength) {
+  			return;
+  		}
+
+  		firstChange = this.length;
+  	}
+
+  	this.length = this.fragments.length = newLength;
+
+  	if (this.rendered) {
+  		global_runloop.addView(this);
+  	}
+
+  	// Prepare new fragment options
+  	fragmentOptions = {
+  		template: this.template.f,
+  		root: this.root,
+  		owner: this
+  	};
+
+  	// Add as many new fragments as we need to, or add back existing
+  	// (detached) fragments
+  	for (i = firstChange; i < newLength; i += 1) {
+  		fragment = reboundFragments[i];
+
+  		if (!fragment) {
+  			this.fragmentsToCreate.push(i);
+  		}
+
+  		this.fragments[i] = fragment;
+  	}
+  }
+
+  function shuffle__blindRebind(dep) {
+  	// the keypath doesn't actually matter here as it won't have changed
+  	dep.rebind("", "");
+  }
+
+  var prototype_rebind = function (oldKeypath, newKeypath) {
+  	Mustache.rebind.call(this, oldKeypath, newKeypath);
+  };
+
+  var Section_prototype_render = Section$render;
+
+  function Section$render() {
+  	var _this = this;
+
+  	this.docFrag = document.createDocumentFragment();
+
+  	this.fragments.forEach(function (f) {
+  		return _this.docFrag.appendChild(f.render());
+  	});
+
+  	this.renderedFragments = this.fragments.slice();
+  	this.fragmentsToRender = [];
+
+  	this.rendered = true;
+  	return this.docFrag;
+  }
+
+  var setValue = Section$setValue;
+
+  function Section$setValue(value) {
+  	var _this = this;
+
+  	var wrapper, fragmentOptions;
+
+  	if (this.updating) {
+  		// If a child of this section causes a re-evaluation - for example, an
+  		// expression refers to a function that mutates the array that this
+  		// section depends on - we'll end up with a double rendering bug (see
+  		// https://github.com/ractivejs/ractive/issues/748). This prevents it.
+  		return;
+  	}
+
+  	this.updating = true;
+
+  	// with sections, we need to get the fake value if we have a wrapped object
+  	if (this.keypath && (wrapper = this.root.viewmodel.wrapped[this.keypath.str])) {
+  		value = wrapper.get();
+  	}
+
+  	// If any fragments are awaiting creation after a splice,
+  	// this is the place to do it
+  	if (this.fragmentsToCreate.length) {
+  		fragmentOptions = {
+  			template: this.template.f || [],
+  			root: this.root,
+  			pElement: this.pElement,
+  			owner: this
+  		};
+
+  		this.fragmentsToCreate.forEach(function (index) {
+  			var fragment;
+
+  			fragmentOptions.context = _this.keypath.join(index);
+  			fragmentOptions.index = index;
+
+  			fragment = new virtualdom_Fragment(fragmentOptions);
+  			_this.fragmentsToRender.push(_this.fragments[index] = fragment);
+  		});
+
+  		this.fragmentsToCreate.length = 0;
+  	} else if (reevaluateSection(this, value)) {
+  		this.bubble();
+
+  		if (this.rendered) {
+  			global_runloop.addView(this);
+  		}
+  	}
+
+  	this.value = value;
+  	this.updating = false;
+  }
+
+  function changeCurrentSubtype(section, value, obj) {
+  	if (value === SECTION_EACH) {
+  		// make sure ref type is up to date for key or value indices
+  		if (section.indexRefs && section.indexRefs[0]) {
+  			var ref = section.indexRefs[0];
+
+  			// when switching flavors, make sure the section gets updated
+  			if (obj && ref.t === "i" || !obj && ref.t === "k") {
+  				// if switching from object to list, unbind all of the old fragments
+  				if (!obj) {
+  					section.length = 0;
+  					section.fragmentsToUnrender = section.fragments.slice(0);
+  					section.fragmentsToUnrender.forEach(function (f) {
+  						return f.unbind();
+  					});
+  				}
+  			}
+
+  			ref.t = obj ? "k" : "i";
+  		}
+  	}
+
+  	section.currentSubtype = value;
+  }
+
+  function reevaluateSection(section, value) {
+  	var fragmentOptions = {
+  		template: section.template.f || [],
+  		root: section.root,
+  		pElement: section.parentFragment.pElement,
+  		owner: section
+  	};
+
+  	section.hasContext = true;
+
+  	// If we already know the section type, great
+  	// TODO can this be optimised? i.e. pick an reevaluateSection function during init
+  	// and avoid doing this each time?
+  	if (section.subtype) {
+  		switch (section.subtype) {
+  			case SECTION_IF:
+  				section.hasContext = false;
+  				return reevaluateConditionalSection(section, value, false, fragmentOptions);
+
+  			case SECTION_UNLESS:
+  				section.hasContext = false;
+  				return reevaluateConditionalSection(section, value, true, fragmentOptions);
+
+  			case SECTION_WITH:
+  				return reevaluateContextSection(section, fragmentOptions);
+
+  			case SECTION_IF_WITH:
+  				return reevaluateConditionalContextSection(section, value, fragmentOptions);
+
+  			case SECTION_EACH:
+  				if (isObject(value)) {
+  					changeCurrentSubtype(section, section.subtype, true);
+  					return reevaluateListObjectSection(section, value, fragmentOptions);
+  				}
+
+  				// Fallthrough - if it's a conditional or an array we need to continue
+  		}
+  	}
+
+  	// Otherwise we need to work out what sort of section we're dealing with
+  	section.ordered = !!isArrayLike(value);
+
+  	// Ordered list section
+  	if (section.ordered) {
+  		changeCurrentSubtype(section, SECTION_EACH, false);
+  		return reevaluateListSection(section, value, fragmentOptions);
+  	}
+
+  	// Unordered list, or context
+  	if (isObject(value) || typeof value === "function") {
+  		// Index reference indicates section should be treated as a list
+  		if (section.template.i) {
+  			changeCurrentSubtype(section, SECTION_EACH, true);
+  			return reevaluateListObjectSection(section, value, fragmentOptions);
+  		}
+
+  		// Otherwise, object provides context for contents
+  		changeCurrentSubtype(section, SECTION_WITH, false);
+  		return reevaluateContextSection(section, fragmentOptions);
+  	}
+
+  	// Conditional section
+  	changeCurrentSubtype(section, SECTION_IF, false);
+  	section.hasContext = false;
+  	return reevaluateConditionalSection(section, value, false, fragmentOptions);
+  }
+
+  function reevaluateListSection(section, value, fragmentOptions) {
+  	var i, length, fragment;
+
+  	length = value.length;
+
+  	if (length === section.length) {
+  		// Nothing to do
+  		return false;
+  	}
+
+  	// if the array is shorter than it was previously, remove items
+  	if (length < section.length) {
+  		section.fragmentsToUnrender = section.fragments.splice(length, section.length - length);
+  		section.fragmentsToUnrender.forEach(methodCallers__unbind);
+  	}
+
+  	// otherwise...
+  	else {
+  		if (length > section.length) {
+  			// add any new ones
+  			for (i = section.length; i < length; i += 1) {
+  				// append list item to context stack
+  				fragmentOptions.context = section.keypath.join(i);
+  				fragmentOptions.index = i;
+
+  				fragment = new virtualdom_Fragment(fragmentOptions);
+  				section.fragmentsToRender.push(section.fragments[i] = fragment);
+  			}
+  		}
+  	}
+
+  	section.length = length;
+  	return true;
+  }
+
+  function reevaluateListObjectSection(section, value, fragmentOptions) {
+  	var id, i, hasKey, fragment, changed, deps;
+
+  	hasKey = section.hasKey || (section.hasKey = {});
+
+  	// remove any fragments that should no longer exist
+  	i = section.fragments.length;
+  	while (i--) {
+  		fragment = section.fragments[i];
+
+  		if (!(fragment.key in value)) {
+  			changed = true;
+
+  			fragment.unbind();
+  			section.fragmentsToUnrender.push(fragment);
+  			section.fragments.splice(i, 1);
+
+  			hasKey[fragment.key] = false;
+  		}
+  	}
+
+  	// notify any dependents about changed indices
+  	i = section.fragments.length;
+  	while (i--) {
+  		fragment = section.fragments[i];
+
+  		if (fragment.index !== i) {
+  			fragment.index = i;
+  			if (deps = fragment.registeredIndexRefs) {
+  				deps.forEach(setValue__blindRebind);
+  			}
+  		}
+  	}
+
+  	// add any that haven't been created yet
+  	i = section.fragments.length;
+  	for (id in value) {
+  		if (!hasKey[id]) {
+  			changed = true;
+
+  			fragmentOptions.context = section.keypath.join(id);
+  			fragmentOptions.key = id;
+  			fragmentOptions.index = i++;
+
+  			fragment = new virtualdom_Fragment(fragmentOptions);
+
+  			section.fragmentsToRender.push(fragment);
+  			section.fragments.push(fragment);
+  			hasKey[id] = true;
+  		}
+  	}
+
+  	section.length = section.fragments.length;
+  	return changed;
+  }
+
+  function reevaluateConditionalContextSection(section, value, fragmentOptions) {
+  	if (value) {
+  		return reevaluateContextSection(section, fragmentOptions);
+  	} else {
+  		return removeSectionFragments(section);
+  	}
+  }
+
+  function reevaluateContextSection(section, fragmentOptions) {
+  	var fragment;
+
+  	// ...then if it isn't rendered, render it, adding section.keypath to the context stack
+  	// (if it is already rendered, then any children dependent on the context stack
+  	// will update themselves without any prompting)
+  	if (!section.length) {
+  		// append this section to the context stack
+  		fragmentOptions.context = section.keypath;
+  		fragmentOptions.index = 0;
+
+  		fragment = new virtualdom_Fragment(fragmentOptions);
+
+  		section.fragmentsToRender.push(section.fragments[0] = fragment);
+  		section.length = 1;
+
+  		return true;
+  	}
+  }
+
+  function reevaluateConditionalSection(section, value, inverted, fragmentOptions) {
+  	var doRender, emptyArray, emptyObject, fragment, name;
+
+  	emptyArray = isArrayLike(value) && value.length === 0;
+  	emptyObject = false;
+  	if (!isArrayLike(value) && isObject(value)) {
+  		emptyObject = true;
+  		for (name in value) {
+  			emptyObject = false;
+  			break;
+  		}
+  	}
+
+  	if (inverted) {
+  		doRender = emptyArray || emptyObject || !value;
+  	} else {
+  		doRender = value && !emptyArray && !emptyObject;
+  	}
+
+  	if (doRender) {
+  		if (!section.length) {
+  			// no change to context stack
+  			fragmentOptions.index = 0;
+
+  			fragment = new virtualdom_Fragment(fragmentOptions);
+  			section.fragmentsToRender.push(section.fragments[0] = fragment);
+  			section.length = 1;
+
+  			return true;
+  		}
+
+  		if (section.length > 1) {
+  			section.fragmentsToUnrender = section.fragments.splice(1);
+  			section.fragmentsToUnrender.forEach(methodCallers__unbind);
+
+  			return true;
+  		}
+  	} else {
+  		return removeSectionFragments(section);
+  	}
+  }
+
+  function removeSectionFragments(section) {
+  	if (section.length) {
+  		section.fragmentsToUnrender = section.fragments.splice(0, section.fragments.length).filter(isRendered);
+  		section.fragmentsToUnrender.forEach(methodCallers__unbind);
+  		section.length = section.fragmentsToRender.length = 0;
+  		return true;
+  	}
+  }
+
+  function isRendered(fragment) {
+  	return fragment.rendered;
+  }
+
+  function setValue__blindRebind(dep) {
+  	// the keypath doesn't actually matter here as it won't have changed
+  	dep.rebind("", "");
+  }
+
+  var prototype_toString = Section$toString;
+
+  function Section$toString(escape) {
+  	var str, i, len;
+
+  	str = "";
+
+  	i = 0;
+  	len = this.length;
+
+  	for (i = 0; i < len; i += 1) {
+  		str += this.fragments[i].toString(escape);
+  	}
+
+  	return str;
+  }
+
+  var prototype_unbind = Section$unbind;
+  function Section$unbind() {
+  	var _this = this;
+
+  	this.fragments.forEach(methodCallers__unbind);
+  	this.fragmentsToRender.forEach(function (f) {
+  		return removeFromArray(_this.fragments, f);
+  	});
+  	this.fragmentsToRender = [];
+  	shared_unbind.call(this);
+
+  	this.length = 0;
+  	this.unbound = true;
+  }
+
+  var prototype_unrender = Section$unrender;
+
+  function Section$unrender(shouldDestroy) {
+  	this.fragments.forEach(shouldDestroy ? unrenderAndDestroy : prototype_unrender__unrender);
+  	this.renderedFragments = [];
+  	this.rendered = false;
+  }
+
+  function unrenderAndDestroy(fragment) {
+  	fragment.unrender(true);
+  }
+
+  function prototype_unrender__unrender(fragment) {
+  	fragment.unrender(false);
+  }
+
+  var prototype_update = Section$update;
+
+  function Section$update() {
+  	var fragment, renderIndex, renderedFragments, anchor, target, i, len;
+
+  	// `this.renderedFragments` is in the order of the previous render.
+  	// If fragments have shuffled about, this allows us to quickly
+  	// reinsert them in the correct place
+  	renderedFragments = this.renderedFragments;
+
+  	// Remove fragments that have been marked for destruction
+  	while (fragment = this.fragmentsToUnrender.pop()) {
+  		fragment.unrender(true);
+  		renderedFragments.splice(renderedFragments.indexOf(fragment), 1);
+  	}
+
+  	// Render new fragments (but don't insert them yet)
+  	while (fragment = this.fragmentsToRender.shift()) {
+  		fragment.render();
+  	}
+
+  	if (this.rendered) {
+  		target = this.parentFragment.getNode();
+  	}
+
+  	len = this.fragments.length;
+  	for (i = 0; i < len; i += 1) {
+  		fragment = this.fragments[i];
+  		renderIndex = renderedFragments.indexOf(fragment, i); // search from current index - it's guaranteed to be the same or higher
+
+  		if (renderIndex === i) {
+  			// already in the right place. insert accumulated nodes (if any) and carry on
+  			if (this.docFrag.childNodes.length) {
+  				anchor = fragment.firstNode();
+  				target.insertBefore(this.docFrag, anchor);
+  			}
+
+  			continue;
+  		}
+
+  		this.docFrag.appendChild(fragment.detach());
+
+  		// update renderedFragments
+  		if (renderIndex !== -1) {
+  			renderedFragments.splice(renderIndex, 1);
+  		}
+  		renderedFragments.splice(i, 0, fragment);
+  	}
+
+  	if (this.rendered && this.docFrag.childNodes.length) {
+  		anchor = this.parentFragment.findNextNode(this);
+  		target.insertBefore(this.docFrag, anchor);
+  	}
+
+  	// Save the rendering order for next time
+  	this.renderedFragments = this.fragments.slice();
+  }
+
+  var Section = function (options) {
+  	this.type = SECTION;
+  	this.subtype = this.currentSubtype = options.template.n;
+  	this.inverted = this.subtype === SECTION_UNLESS;
+
+  	this.pElement = options.pElement;
+
+  	this.fragments = [];
+  	this.fragmentsToCreate = [];
+  	this.fragmentsToRender = [];
+  	this.fragmentsToUnrender = [];
+
+  	if (options.template.i) {
+  		this.indexRefs = options.template.i.split(",").map(function (k, i) {
+  			return { n: k, t: i === 0 ? "k" : "i" };
+  		});
+  	}
+
+  	this.renderedFragments = [];
+
+  	this.length = 0; // number of times this section is rendered
+
+  	Mustache.init(this, options);
+  };
+
+  Section.prototype = {
+  	bubble: Section_prototype_bubble,
+  	detach: Section_prototype_detach,
+  	find: find,
+  	findAll: findAll,
+  	findAllComponents: findAllComponents,
+  	findComponent: findComponent,
+  	findNextNode: findNextNode,
+  	firstNode: firstNode,
+  	getIndexRef: function (name) {
+  		if (this.indexRefs) {
+  			var i = this.indexRefs.length;
+  			while (i--) {
+  				var ref = this.indexRefs[i];
+  				if (ref.n === name) {
+  					return ref;
+  				}
+  			}
+  		}
+  	},
+  	getValue: Mustache.getValue,
+  	shuffle: shuffle,
+  	rebind: prototype_rebind,
+  	render: Section_prototype_render,
+  	resolve: Mustache.resolve,
+  	setValue: setValue,
+  	toString: prototype_toString,
+  	unbind: prototype_unbind,
+  	unrender: prototype_unrender,
+  	update: prototype_update
+  };
+
+  var _Section = Section;
+
+  var Triple_prototype_detach = Triple$detach;
+
+  function Triple$detach() {
+  	var len, i;
+
+  	if (this.docFrag) {
+  		len = this.nodes.length;
+  		for (i = 0; i < len; i += 1) {
+  			this.docFrag.appendChild(this.nodes[i]);
+  		}
+
+  		return this.docFrag;
+  	}
+  }
+
+  var Triple_prototype_find = Triple$find;
+  function Triple$find(selector) {
+  	var i, len, node, queryResult;
+
+  	len = this.nodes.length;
+  	for (i = 0; i < len; i += 1) {
+  		node = this.nodes[i];
+
+  		if (node.nodeType !== 1) {
+  			continue;
+  		}
+
+  		if (matches(node, selector)) {
+  			return node;
+  		}
+
+  		if (queryResult = node.querySelector(selector)) {
+  			return queryResult;
+  		}
+  	}
+
+  	return null;
+  }
+
+  var Triple_prototype_findAll = Triple$findAll;
+  function Triple$findAll(selector, queryResult) {
+  	var i, len, node, queryAllResult, numNodes, j;
+
+  	len = this.nodes.length;
+  	for (i = 0; i < len; i += 1) {
+  		node = this.nodes[i];
+
+  		if (node.nodeType !== 1) {
+  			continue;
+  		}
+
+  		if (matches(node, selector)) {
+  			queryResult.push(node);
+  		}
+
+  		if (queryAllResult = node.querySelectorAll(selector)) {
+  			numNodes = queryAllResult.length;
+  			for (j = 0; j < numNodes; j += 1) {
+  				queryResult.push(queryAllResult[j]);
+  			}
+  		}
+  	}
+  }
+
+  var Triple_prototype_firstNode = Triple$firstNode;
+
+  function Triple$firstNode() {
+  	if (this.rendered && this.nodes[0]) {
+  		return this.nodes[0];
+  	}
+
+  	return this.parentFragment.findNextNode(this);
+  }
+
+  var elementCache = {},
+      ieBug,
+      ieBlacklist;
+
+  try {
+  	createElement("table").innerHTML = "foo";
+  } catch (err) {
+  	ieBug = true;
+
+  	ieBlacklist = {
+  		TABLE: ["<table class=\"x\">", "</table>"],
+  		THEAD: ["<table><thead class=\"x\">", "</thead></table>"],
+  		TBODY: ["<table><tbody class=\"x\">", "</tbody></table>"],
+  		TR: ["<table><tr class=\"x\">", "</tr></table>"],
+  		SELECT: ["<select class=\"x\">", "</select>"]
+  	};
+  }
+
+  var insertHtml = function (html, node, docFrag) {
+  	var container,
+  	    nodes = [],
+  	    wrapper,
+  	    selectedOption,
+  	    child,
+  	    i;
+
+  	// render 0 and false
+  	if (html != null && html !== "") {
+  		if (ieBug && (wrapper = ieBlacklist[node.tagName])) {
+  			container = element("DIV");
+  			container.innerHTML = wrapper[0] + html + wrapper[1];
+  			container = container.querySelector(".x");
+
+  			if (container.tagName === "SELECT") {
+  				selectedOption = container.options[container.selectedIndex];
+  			}
+  		} else if (node.namespaceURI === namespaces.svg) {
+  			container = element("DIV");
+  			container.innerHTML = "<svg class=\"x\">" + html + "</svg>";
+  			container = container.querySelector(".x");
+  		} else {
+  			container = element(node.tagName);
+  			container.innerHTML = html;
+
+  			if (container.tagName === "SELECT") {
+  				selectedOption = container.options[container.selectedIndex];
+  			}
+  		}
+
+  		while (child = container.firstChild) {
+  			nodes.push(child);
+  			docFrag.appendChild(child);
+  		}
+
+  		// This is really annoying. Extracting <option> nodes from the
+  		// temporary container <select> causes the remaining ones to
+  		// become selected. So now we have to deselect them. IE8, you
+  		// amaze me. You really do
+  		// ...and now Chrome too
+  		if (node.tagName === "SELECT") {
+  			i = nodes.length;
+  			while (i--) {
+  				if (nodes[i] !== selectedOption) {
+  					nodes[i].selected = false;
+  				}
+  			}
+  		}
+  	}
+
+  	return nodes;
+  };
+
+  function element(tagName) {
+  	return elementCache[tagName] || (elementCache[tagName] = createElement(tagName));
+  }
+
+  var helpers_updateSelect = updateSelect;
+
+  function updateSelect(parentElement) {
+  	var selectedOptions, option, value;
+
+  	if (!parentElement || parentElement.name !== "select" || !parentElement.binding) {
+  		return;
+  	}
+
+  	selectedOptions = toArray(parentElement.node.options).filter(isSelected);
+
+  	// If one of them had a `selected` attribute, we need to sync
+  	// the model to the view
+  	if (parentElement.getAttribute("multiple")) {
+  		value = selectedOptions.map(function (o) {
+  			return o.value;
+  		});
+  	} else if (option = selectedOptions[0]) {
+  		value = option.value;
+  	}
+
+  	if (value !== undefined) {
+  		parentElement.binding.setValue(value);
+  	}
+
+  	parentElement.bubble();
+  }
+
+  function isSelected(option) {
+  	return option.selected;
+  }
+
+  var Triple_prototype_render = Triple$render;
+  function Triple$render() {
+  	if (this.rendered) {
+  		throw new Error("Attempted to render an item that was already rendered");
+  	}
+
+  	this.docFrag = document.createDocumentFragment();
+  	this.nodes = insertHtml(this.value, this.parentFragment.getNode(), this.docFrag);
+
+  	// Special case - we're inserting the contents of a <select>
+  	helpers_updateSelect(this.pElement);
+
+  	this.rendered = true;
+  	return this.docFrag;
+  }
+
+  var prototype_setValue = Triple$setValue;
+  function Triple$setValue(value) {
+  	var wrapper;
+
+  	// TODO is there a better way to approach this?
+  	if (wrapper = this.root.viewmodel.wrapped[this.keypath.str]) {
+  		value = wrapper.get();
+  	}
+
+  	if (value !== this.value) {
+  		this.value = value;
+  		this.parentFragment.bubble();
+
+  		if (this.rendered) {
+  			global_runloop.addView(this);
+  		}
+  	}
+  }
+
+  var Triple_prototype_toString = Triple$toString;
+  function Triple$toString() {
+  	return this.value != undefined ? decodeCharacterReferences("" + this.value) : "";
+  }
+
+  var Triple_prototype_unrender = Triple$unrender;
+  function Triple$unrender(shouldDestroy) {
+  	if (this.rendered && shouldDestroy) {
+  		this.nodes.forEach(detachNode);
+  		this.rendered = false;
+  	}
+
+  	// TODO update live queries
+  }
+
+  var Triple_prototype_update = Triple$update;
+  function Triple$update() {
+  	var node, parentNode;
+
+  	if (!this.rendered) {
+  		return;
+  	}
+
+  	// Remove existing nodes
+  	while (this.nodes && this.nodes.length) {
+  		node = this.nodes.pop();
+  		node.parentNode.removeChild(node);
+  	}
+
+  	// Insert new nodes
+  	parentNode = this.parentFragment.getNode();
+
+  	this.nodes = insertHtml(this.value, parentNode, this.docFrag);
+  	parentNode.insertBefore(this.docFrag, this.parentFragment.findNextNode(this));
+
+  	// Special case - we're inserting the contents of a <select>
+  	helpers_updateSelect(this.pElement);
+  }
+
+  var Triple = function (options) {
+  	this.type = TRIPLE;
+  	Mustache.init(this, options);
+  };
+
+  Triple.prototype = {
+  	detach: Triple_prototype_detach,
+  	find: Triple_prototype_find,
+  	findAll: Triple_prototype_findAll,
+  	firstNode: Triple_prototype_firstNode,
+  	getValue: Mustache.getValue,
+  	rebind: Mustache.rebind,
+  	render: Triple_prototype_render,
+  	resolve: Mustache.resolve,
+  	setValue: prototype_setValue,
+  	toString: Triple_prototype_toString,
+  	unbind: shared_unbind,
+  	unrender: Triple_prototype_unrender,
+  	update: Triple_prototype_update
+  };
+
+  var _Triple = Triple;
+
+  var Element_prototype_bubble = function () {
+  	this.parentFragment.bubble();
+  };
+
+  var Element_prototype_detach = Element$detach;
+
+  function Element$detach() {
+  	var node = this.node,
+  	    parentNode;
+
+  	if (node) {
+  		// need to check for parent node - DOM may have been altered
+  		// by something other than Ractive! e.g. jQuery UI...
+  		if (parentNode = node.parentNode) {
+  			parentNode.removeChild(node);
+  		}
+
+  		return node;
+  	}
+  }
+
+  var Element_prototype_find = function (selector) {
+  	if (!this.node) {
+  		// this element hasn't been rendered yet
+  		return null;
+  	}
+
+  	if (matches(this.node, selector)) {
+  		return this.node;
+  	}
+
+  	if (this.fragment && this.fragment.find) {
+  		return this.fragment.find(selector);
+  	}
+  };
+
+  var Element_prototype_findAll = function (selector, query) {
+  	// Add this node to the query, if applicable, and register the
+  	// query on this element
+  	if (query._test(this, true) && query.live) {
+  		(this.liveQueries || (this.liveQueries = [])).push(query);
+  	}
+
+  	if (this.fragment) {
+  		this.fragment.findAll(selector, query);
+  	}
+  };
+
+  var Element_prototype_findAllComponents = function (selector, query) {
+  	if (this.fragment) {
+  		this.fragment.findAllComponents(selector, query);
+  	}
+  };
+
+  var Element_prototype_findComponent = function (selector) {
+  	if (this.fragment) {
+  		return this.fragment.findComponent(selector);
+  	}
+  };
+
+  var Element_prototype_findNextNode = Element$findNextNode;
+
+  function Element$findNextNode() {
+  	return null;
+  }
+
+  var Element_prototype_firstNode = Element$firstNode;
+
+  function Element$firstNode() {
+  	return this.node;
+  }
+
+  var getAttribute = Element$getAttribute;
+
+  function Element$getAttribute(name) {
+  	if (!this.attributes || !this.attributes[name]) {
+  		return;
+  	}
+
+  	return this.attributes[name].value;
+  }
+
+  var truthy = /^true|on|yes|1$/i;
+  var processBindingAttributes__isNumeric = /^[0-9]+$/;
+
+  var processBindingAttributes = function (element, template) {
+  	var val, attrs, attributes;
+
+  	attributes = template.a || {};
+  	attrs = {};
+
+  	// attributes that are present but don't have a value (=)
+  	// will be set to the number 0, which we condider to be true
+  	// the string '0', however is false
+
+  	val = attributes.twoway;
+  	if (val !== undefined) {
+  		attrs.twoway = val === 0 || truthy.test(val);
+  	}
+
+  	val = attributes.lazy;
+  	if (val !== undefined) {
+  		// check for timeout value
+  		if (val !== 0 && processBindingAttributes__isNumeric.test(val)) {
+  			attrs.lazy = parseInt(val);
+  		} else {
+  			attrs.lazy = val === 0 || truthy.test(val);
+  		}
+  	}
+
+  	return attrs;
+  };
+
+  var Attribute_prototype_bubble = Attribute$bubble;
+  function Attribute$bubble() {
+  	var value = this.useProperty || !this.rendered ? this.fragment.getValue() : this.fragment.toString();
+
+  	// TODO this can register the attribute multiple times (see render test
+  	// 'Attribute with nested mustaches')
+  	if (!isEqual(value, this.value)) {
+
+  		// Need to clear old id from ractive.nodes
+  		if (this.name === "id" && this.value) {
+  			delete this.root.nodes[this.value];
+  		}
+
+  		this.value = value;
+
+  		if (this.name === "value" && this.node) {
+  			// We need to store the value on the DOM like this so we
+  			// can retrieve it later without it being coerced to a string
+  			this.node._ractive.value = value;
+  		}
+
+  		if (this.rendered) {
+  			global_runloop.addView(this);
+  		}
+  	}
+  }
+
+  var svgCamelCaseElements, svgCamelCaseAttributes, createMap, map;
+  svgCamelCaseElements = "altGlyph altGlyphDef altGlyphItem animateColor animateMotion animateTransform clipPath feBlend feColorMatrix feComponentTransfer feComposite feConvolveMatrix feDiffuseLighting feDisplacementMap feDistantLight feFlood feFuncA feFuncB feFuncG feFuncR feGaussianBlur feImage feMerge feMergeNode feMorphology feOffset fePointLight feSpecularLighting feSpotLight feTile feTurbulence foreignObject glyphRef linearGradient radialGradient textPath vkern".split(" ");
+  svgCamelCaseAttributes = "attributeName attributeType baseFrequency baseProfile calcMode clipPathUnits contentScriptType contentStyleType diffuseConstant edgeMode externalResourcesRequired filterRes filterUnits glyphRef gradientTransform gradientUnits kernelMatrix kernelUnitLength keyPoints keySplines keyTimes lengthAdjust limitingConeAngle markerHeight markerUnits markerWidth maskContentUnits maskUnits numOctaves pathLength patternContentUnits patternTransform patternUnits pointsAtX pointsAtY pointsAtZ preserveAlpha preserveAspectRatio primitiveUnits refX refY repeatCount repeatDur requiredExtensions requiredFeatures specularConstant specularExponent spreadMethod startOffset stdDeviation stitchTiles surfaceScale systemLanguage tableValues targetX targetY textLength viewBox viewTarget xChannelSelector yChannelSelector zoomAndPan".split(" ");
+
+  createMap = function (items) {
+  	var map = {},
+  	    i = items.length;
+  	while (i--) {
+  		map[items[i].toLowerCase()] = items[i];
+  	}
+  	return map;
+  };
+
+  map = createMap(svgCamelCaseElements.concat(svgCamelCaseAttributes));
+
+  var enforceCase = function (elementName) {
+  	var lowerCaseElementName = elementName.toLowerCase();
+  	return map[lowerCaseElementName] || lowerCaseElementName;
+  };
+
+  var determineNameAndNamespace = function (attribute, name) {
+  	var colonIndex, namespacePrefix;
+
+  	// are we dealing with a namespaced attribute, e.g. xlink:href?
+  	colonIndex = name.indexOf(":");
+  	if (colonIndex !== -1) {
+
+  		// looks like we are, yes...
+  		namespacePrefix = name.substr(0, colonIndex);
+
+  		// ...unless it's a namespace *declaration*, which we ignore (on the assumption
+  		// that only valid namespaces will be used)
+  		if (namespacePrefix !== "xmlns") {
+  			name = name.substring(colonIndex + 1);
+
+  			attribute.name = enforceCase(name);
+  			attribute.namespace = namespaces[namespacePrefix.toLowerCase()];
+  			attribute.namespacePrefix = namespacePrefix;
+
+  			if (!attribute.namespace) {
+  				throw "Unknown namespace (\"" + namespacePrefix + "\")";
+  			}
+
+  			return;
+  		}
+  	}
+
+  	// SVG attribute names are case sensitive
+  	attribute.name = attribute.element.namespace !== namespaces.html ? enforceCase(name) : name;
+  };
+
+  var helpers_getInterpolator = getInterpolator;
+  function getInterpolator(attribute) {
+  	var items = attribute.fragment.items;
+
+  	if (items.length !== 1) {
+  		return;
+  	}
+
+  	if (items[0].type === INTERPOLATOR) {
+  		return items[0];
+  	}
+  }
+
+  var prototype_init = Attribute$init;
+  function Attribute$init(options) {
+  	this.type = ATTRIBUTE;
+  	this.element = options.element;
+  	this.root = options.root;
+
+  	determineNameAndNamespace(this, options.name);
+  	this.isBoolean = booleanAttributes.test(this.name);
+
+  	// if it's an empty attribute, or just a straight key-value pair, with no
+  	// mustache shenanigans, set the attribute accordingly and go home
+  	if (!options.value || typeof options.value === "string") {
+  		this.value = this.isBoolean ? true : options.value || "";
+  		return;
+  	}
+
+  	// otherwise we need to do some work
+
+  	// share parentFragment with parent element
+  	this.parentFragment = this.element.parentFragment;
+
+  	this.fragment = new virtualdom_Fragment({
+  		template: options.value,
+  		root: this.root,
+  		owner: this
+  	});
+
+  	// TODO can we use this.fragment.toString() in some cases? It's quicker
+  	this.value = this.fragment.getValue();
+
+  	// Store a reference to this attribute's interpolator, if its fragment
+  	// takes the form `{{foo}}`. This is necessary for two-way binding and
+  	// for correctly rendering HTML later
+  	this.interpolator = helpers_getInterpolator(this);
+  	this.isBindable = !!this.interpolator && !this.interpolator.isStatic;
+
+  	// mark as ready
+  	this.ready = true;
+  }
+
+  var Attribute_prototype_rebind = Attribute$rebind;
+
+  function Attribute$rebind(oldKeypath, newKeypath) {
+  	if (this.fragment) {
+  		this.fragment.rebind(oldKeypath, newKeypath);
+  	}
+  }
+
+  var Attribute_prototype_render = Attribute$render;
+  var propertyNames = {
+  	"accept-charset": "acceptCharset",
+  	accesskey: "accessKey",
+  	bgcolor: "bgColor",
+  	"class": "className",
+  	codebase: "codeBase",
+  	colspan: "colSpan",
+  	contenteditable: "contentEditable",
+  	datetime: "dateTime",
+  	dirname: "dirName",
+  	"for": "htmlFor",
+  	"http-equiv": "httpEquiv",
+  	ismap: "isMap",
+  	maxlength: "maxLength",
+  	novalidate: "noValidate",
+  	pubdate: "pubDate",
+  	readonly: "readOnly",
+  	rowspan: "rowSpan",
+  	tabindex: "tabIndex",
+  	usemap: "useMap"
+  };
+  function Attribute$render(node) {
+  	var propertyName;
+
+  	this.node = node;
+
+  	// should we use direct property access, or setAttribute?
+  	if (!node.namespaceURI || node.namespaceURI === namespaces.html) {
+  		propertyName = propertyNames[this.name] || this.name;
+
+  		if (node[propertyName] !== undefined) {
+  			this.propertyName = propertyName;
+  		}
+
+  		// is attribute a boolean attribute or 'value'? If so we're better off doing e.g.
+  		// node.selected = true rather than node.setAttribute( 'selected', '' )
+  		if (this.isBoolean || this.isTwoway) {
+  			this.useProperty = true;
+  		}
+
+  		if (propertyName === "value") {
+  			node._ractive.value = this.value;
+  		}
+  	}
+
+  	this.rendered = true;
+  	this.update();
+  }
+
+  var Attribute_prototype_toString = Attribute$toString;
+
+  function Attribute$toString() {
+  	var _ref = this;
+
+  	var name = _ref.name;
+  	var namespacePrefix = _ref.namespacePrefix;
+  	var value = _ref.value;
+  	var interpolator = _ref.interpolator;
+  	var fragment = _ref.fragment;
+
+  	// Special case - select and textarea values (should not be stringified)
+  	if (name === "value" && (this.element.name === "select" || this.element.name === "textarea")) {
+  		return;
+  	}
+
+  	// Special case - content editable
+  	if (name === "value" && this.element.getAttribute("contenteditable") !== undefined) {
+  		return;
+  	}
+
+  	// Special case - radio names
+  	if (name === "name" && this.element.name === "input" && interpolator) {
+  		return "name={{" + (interpolator.keypath.str || interpolator.ref) + "}}";
+  	}
+
+  	// Boolean attributes
+  	if (this.isBoolean) {
+  		return value ? name : "";
+  	}
+
+  	if (fragment) {
+  		// special case - this catches undefined/null values (#1211)
+  		if (fragment.items.length === 1 && fragment.items[0].value == null) {
+  			return "";
+  		}
+
+  		value = fragment.toString();
+  	}
+
+  	if (namespacePrefix) {
+  		name = namespacePrefix + ":" + name;
+  	}
+
+  	return value ? name + "=\"" + Attribute_prototype_toString__escape(value) + "\"" : name;
+  }
+
+  function Attribute_prototype_toString__escape(value) {
+  	return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  var Attribute_prototype_unbind = Attribute$unbind;
+
+  function Attribute$unbind() {
+  	// ignore non-dynamic attributes
+  	if (this.fragment) {
+  		this.fragment.unbind();
+  	}
+
+  	if (this.name === "id") {
+  		delete this.root.nodes[this.value];
+  	}
+  }
+
+  var updateSelectValue = Attribute$updateSelect;
+
+  function Attribute$updateSelect() {
+  	var value = this.value,
+  	    options,
+  	    option,
+  	    optionValue,
+  	    i;
+
+  	if (!this.locked) {
+  		this.node._ractive.value = value;
+
+  		options = this.node.options;
+  		i = options.length;
+
+  		while (i--) {
+  			option = options[i];
+  			optionValue = option._ractive ? option._ractive.value : option.value; // options inserted via a triple don't have _ractive
+
+  			if (optionValue == value) {
+  				// double equals as we may be comparing numbers with strings
+  				option.selected = true;
+  				break;
+  			}
+  		}
+  	}
+
+  	// if we're still here, it means the new value didn't match any of the options...
+  	// TODO figure out what to do in this situation
+  }
+
+  var updateMultipleSelectValue = Attribute$updateMultipleSelect;
+  function Attribute$updateMultipleSelect() {
+  	var value = this.value,
+  	    options,
+  	    i,
+  	    option,
+  	    optionValue;
+
+  	if (!isArray(value)) {
+  		value = [value];
+  	}
+
+  	options = this.node.options;
+  	i = options.length;
+
+  	while (i--) {
+  		option = options[i];
+  		optionValue = option._ractive ? option._ractive.value : option.value; // options inserted via a triple don't have _ractive
+  		option.selected = arrayContains(value, optionValue);
+  	}
+  }
+
+  var updateRadioName = Attribute$updateRadioName;
+
+  function Attribute$updateRadioName() {
+  	var _ref = this;
+
+  	var node = _ref.node;
+  	var value = _ref.value;
+
+  	node.checked = value == node._ractive.value;
+  }
+
+  var updateRadioValue = Attribute$updateRadioValue;
+  function Attribute$updateRadioValue() {
+  	var wasChecked,
+  	    node = this.node,
+  	    binding,
+  	    bindings,
+  	    i;
+
+  	wasChecked = node.checked;
+
+  	node.value = this.element.getAttribute("value");
+  	node.checked = this.element.getAttribute("value") === this.element.getAttribute("name");
+
+  	// This is a special case - if the input was checked, and the value
+  	// changed so that it's no longer checked, the twoway binding is
+  	// most likely out of date. To fix it we have to jump through some
+  	// hoops... this is a little kludgy but it works
+  	if (wasChecked && !node.checked && this.element.binding) {
+  		bindings = this.element.binding.siblings;
+
+  		if (i = bindings.length) {
+  			while (i--) {
+  				binding = bindings[i];
+
+  				if (!binding.element.node) {
+  					// this is the initial render, siblings are still rendering!
+  					// we'll come back later...
+  					return;
+  				}
+
+  				if (binding.element.node.checked) {
+  					global_runloop.addRactive(binding.root);
+  					return binding.handleChange();
+  				}
+  			}
+
+  			this.root.viewmodel.set(binding.keypath, undefined);
+  		}
+  	}
+  }
+
+  var updateCheckboxName = Attribute$updateCheckboxName;
+  function Attribute$updateCheckboxName() {
+  	var _ref = this;
+
+  	var element = _ref.element;
+  	var node = _ref.node;
+  	var value = _ref.value;var binding = element.binding;var valueAttribute;var i;
+
+  	valueAttribute = element.getAttribute("value");
+
+  	if (!isArray(value)) {
+  		binding.isChecked = node.checked = value == valueAttribute;
+  	} else {
+  		i = value.length;
+  		while (i--) {
+  			if (valueAttribute == value[i]) {
+  				binding.isChecked = node.checked = true;
+  				return;
+  			}
+  		}
+  		binding.isChecked = node.checked = false;
+  	}
+  }
+
+  var updateClassName = Attribute$updateClassName;
+  function Attribute$updateClassName() {
+  	this.node.className = safeToStringValue(this.value);
+  }
+
+  var updateIdAttribute = Attribute$updateIdAttribute;
+
+  function Attribute$updateIdAttribute() {
+  	var _ref = this;
+
+  	var node = _ref.node;
+  	var value = _ref.value;
+
+  	this.root.nodes[value] = node;
+  	node.id = value;
+  }
+
+  var updateIEStyleAttribute = Attribute$updateIEStyleAttribute;
+
+  function Attribute$updateIEStyleAttribute() {
+  	var node, value;
+
+  	node = this.node;
+  	value = this.value;
+
+  	if (value === undefined) {
+  		value = "";
+  	}
+
+  	node.style.setAttribute("cssText", value);
+  }
+
+  var updateContentEditableValue = Attribute$updateContentEditableValue;
+
+  function Attribute$updateContentEditableValue() {
+  	var value = this.value;
+
+  	if (value === undefined) {
+  		value = "";
+  	}
+
+  	if (!this.locked) {
+  		this.node.innerHTML = value;
+  	}
+  }
+
+  var updateValue = Attribute$updateValue;
+
+  function Attribute$updateValue() {
+  	var _ref = this;
+
+  	var node = _ref.node;
+  	var value = _ref.value;
+
+  	// store actual value, so it doesn't get coerced to a string
+  	node._ractive.value = value;
+
+  	// with two-way binding, only update if the change wasn't initiated by the user
+  	// otherwise the cursor will often be sent to the wrong place
+  	if (!this.locked) {
+  		node.value = value == undefined ? "" : value;
+  	}
+  }
+
+  var updateBoolean = Attribute$updateBooleanAttribute;
+
+  function Attribute$updateBooleanAttribute() {
+  	// with two-way binding, only update if the change wasn't initiated by the user
+  	// otherwise the cursor will often be sent to the wrong place
+  	if (!this.locked) {
+  		this.node[this.propertyName] = this.value;
+  	}
+  }
+
+  var updateEverythingElse = Attribute$updateEverythingElse;
+
+  function Attribute$updateEverythingElse() {
+  	var _ref = this;
+
+  	var node = _ref.node;
+  	var namespace = _ref.namespace;
+  	var name = _ref.name;
+  	var value = _ref.value;
+  	var fragment = _ref.fragment;
+
+  	if (namespace) {
+  		node.setAttributeNS(namespace, name, (fragment || value).toString());
+  	} else if (!this.isBoolean) {
+  		if (value == null) {
+  			node.removeAttribute(name);
+  		} else {
+  			node.setAttribute(name, (fragment || value).toString());
+  		}
+  	}
+
+  	// Boolean attributes - truthy becomes '', falsy means 'remove attribute'
+  	else {
+  		if (value) {
+  			node.setAttribute(name, "");
+  		} else {
+  			node.removeAttribute(name);
+  		}
+  	}
+  }
+
+  // There are a few special cases when it comes to updating attributes. For this reason,
+  // the prototype .update() method points to this method, which waits until the
+  // attribute has finished initialising, then replaces the prototype method with a more
+  // suitable one. That way, we save ourselves doing a bunch of tests on each call
+  var Attribute_prototype_update = Attribute$update;
+  function Attribute$update() {
+  	var _ref = this;
+
+  	var name = _ref.name;
+  	var element = _ref.element;
+  	var node = _ref.node;var type;var updateMethod;
+
+  	if (name === "id") {
+  		updateMethod = updateIdAttribute;
+  	} else if (name === "value") {
+  		// special case - selects
+  		if (element.name === "select" && name === "value") {
+  			updateMethod = element.getAttribute("multiple") ? updateMultipleSelectValue : updateSelectValue;
+  		} else if (element.name === "textarea") {
+  			updateMethod = updateValue;
+  		}
+
+  		// special case - contenteditable
+  		else if (element.getAttribute("contenteditable") != null) {
+  			updateMethod = updateContentEditableValue;
+  		}
+
+  		// special case - <input>
+  		else if (element.name === "input") {
+  			type = element.getAttribute("type");
+
+  			// type='file' value='{{fileList}}'>
+  			if (type === "file") {
+  				updateMethod = noop; // read-only
+  			}
+
+  			// type='radio' name='{{twoway}}'
+  			else if (type === "radio" && element.binding && element.binding.name === "name") {
+  				updateMethod = updateRadioValue;
+  			} else {
+  				updateMethod = updateValue;
+  			}
+  		}
+  	}
+
+  	// special case - <input type='radio' name='{{twoway}}' value='foo'>
+  	else if (this.isTwoway && name === "name") {
+  		if (node.type === "radio") {
+  			updateMethod = updateRadioName;
+  		} else if (node.type === "checkbox") {
+  			updateMethod = updateCheckboxName;
+  		}
+  	}
+
+  	// special case - style attributes in Internet Exploder
+  	else if (name === "style" && node.style.setAttribute) {
+  		updateMethod = updateIEStyleAttribute;
+  	}
+
+  	// special case - class names. IE fucks things up, again
+  	else if (name === "class" && (!node.namespaceURI || node.namespaceURI === namespaces.html)) {
+  		updateMethod = updateClassName;
+  	} else if (this.useProperty) {
+  		updateMethod = updateBoolean;
+  	}
+
+  	if (!updateMethod) {
+  		updateMethod = updateEverythingElse;
+  	}
+
+  	this.update = updateMethod;
+  	this.update();
+  }
+
+  var Attribute = function (options) {
+  	this.init(options);
+  };
+
+  Attribute.prototype = {
+  	bubble: Attribute_prototype_bubble,
+  	init: prototype_init,
+  	rebind: Attribute_prototype_rebind,
+  	render: Attribute_prototype_render,
+  	toString: Attribute_prototype_toString,
+  	unbind: Attribute_prototype_unbind,
+  	update: Attribute_prototype_update
+  };
+
+  var _Attribute = Attribute;
+
+  var createAttributes = function (element, attributes) {
+  	var name,
+  	    attribute,
+  	    result = [];
+
+  	for (name in attributes) {
+  		// skip binding attributes
+  		if (name === "twoway" || name === "lazy") {
+  			continue;
+  		}
+
+  		if (attributes.hasOwnProperty(name)) {
+  			attribute = new _Attribute({
+  				element: element,
+  				name: name,
+  				value: attributes[name],
+  				root: element.root
+  			});
+
+  			result[name] = attribute;
+
+  			if (name !== "value") {
+  				result.push(attribute);
+  			}
+  		}
+  	}
+
+  	// value attribute goes last. This is because it
+  	// may get clamped on render otherwise, e.g. in
+  	// `<input type='range' value='999' min='0' max='1000'>`
+  	// since default max is 100
+  	if (attribute = result.value) {
+  		result.push(attribute);
+  	}
+
+  	return result;
+  };
+
+  var _ConditionalAttribute__div;
+
+  if (typeof document !== "undefined") {
+  	_ConditionalAttribute__div = createElement("div");
+  }
+
+  var ConditionalAttribute = function (element, template) {
+  	this.element = element;
+  	this.root = element.root;
+  	this.parentFragment = element.parentFragment;
+
+  	this.attributes = [];
+
+  	this.fragment = new virtualdom_Fragment({
+  		root: element.root,
+  		owner: this,
+  		template: [template]
+  	});
+  };
+
+  ConditionalAttribute.prototype = {
+  	bubble: function () {
+  		if (this.node) {
+  			this.update();
+  		}
+
+  		this.element.bubble();
+  	},
+
+  	rebind: function (oldKeypath, newKeypath) {
+  		this.fragment.rebind(oldKeypath, newKeypath);
+  	},
+
+  	render: function (node) {
+  		this.node = node;
+  		this.isSvg = node.namespaceURI === namespaces.svg;
+
+  		this.update();
+  	},
+
+  	unbind: function () {
+  		this.fragment.unbind();
+  	},
+
+  	update: function () {
+  		var _this = this;
+
+  		var str, attrs;
+
+  		str = this.fragment.toString();
+  		attrs = parseAttributes(str, this.isSvg);
+
+  		// any attributes that previously existed but no longer do
+  		// must be removed
+  		this.attributes.filter(function (a) {
+  			return notIn(attrs, a);
+  		}).forEach(function (a) {
+  			_this.node.removeAttribute(a.name);
+  		});
+
+  		attrs.forEach(function (a) {
+  			_this.node.setAttribute(a.name, a.value);
+  		});
+
+  		this.attributes = attrs;
+  	},
+
+  	toString: function () {
+  		return this.fragment.toString();
+  	}
+  };
+
+  var _ConditionalAttribute = ConditionalAttribute;
+
+  function parseAttributes(str, isSvg) {
+  	var tag = isSvg ? "svg" : "div";
+  	_ConditionalAttribute__div.innerHTML = "<" + tag + " " + str + "></" + tag + ">";
+
+  	return toArray(_ConditionalAttribute__div.childNodes[0].attributes);
+  }
+
+  function notIn(haystack, needle) {
+  	var i = haystack.length;
+
+  	while (i--) {
+  		if (haystack[i].name === needle.name) {
+  			return false;
+  		}
+  	}
+
+  	return true;
+  }
+
+  var createConditionalAttributes = function (element, attributes) {
+  	if (!attributes) {
+  		return [];
+  	}
+
+  	return attributes.map(function (a) {
+  		return new _ConditionalAttribute(element, a);
+  	});
+  };
+
+  var Binding = function (element) {
+  	var interpolator, keypath, value, parentForm;
+
+  	this.element = element;
+  	this.root = element.root;
+  	this.attribute = element.attributes[this.name || "value"];
+
+  	interpolator = this.attribute.interpolator;
+  	interpolator.twowayBinding = this;
+
+  	if (keypath = interpolator.keypath) {
+  		if (keypath.str.slice(-1) === "}") {
+  			warnOnceIfDebug("Two-way binding does not work with expressions (`%s` on <%s>)", interpolator.resolver.uniqueString, element.name, { ractive: this.root });
+  			return false;
+  		}
+
+  		if (keypath.isSpecial) {
+  			warnOnceIfDebug("Two-way binding does not work with %s", interpolator.resolver.ref, { ractive: this.root });
+  			return false;
+  		}
+  	} else {
+  		// A mustache may be *ambiguous*. Let's say we were given
+  		// `value="{{bar}}"`. If the context was `foo`, and `foo.bar`
+  		// *wasn't* `undefined`, the keypath would be `foo.bar`.
+  		// Then, any user input would result in `foo.bar` being updated.
+  		//
+  		// If, however, `foo.bar` *was* undefined, and so was `bar`, we would be
+  		// left with an unresolved partial keypath - so we are forced to make an
+  		// assumption. That assumption is that the input in question should
+  		// be forced to resolve to `bar`, and any user input would affect `bar`
+  		// and not `foo.bar`.
+  		//
+  		// Did that make any sense? No? Oh. Sorry. Well the moral of the story is
+  		// be explicit when using two-way data-binding about what keypath you're
+  		// updating. Using it in lists is probably a recipe for confusion...
+  		var ref = interpolator.template.r ? "'" + interpolator.template.r + "' reference" : "expression";
+  		warnIfDebug("The %s being used for two-way binding is ambiguous, and may cause unexpected results. Consider initialising your data to eliminate the ambiguity", ref, { ractive: this.root });
+  		interpolator.resolver.forceResolution();
+  		keypath = interpolator.keypath;
+  	}
+
+  	this.attribute.isTwoway = true;
+  	this.keypath = keypath;
+
+  	// initialise value, if it's undefined
+  	value = this.root.viewmodel.get(keypath);
+
+  	if (value === undefined && this.getInitialValue) {
+  		value = this.getInitialValue();
+
+  		if (value !== undefined) {
+  			this.root.viewmodel.set(keypath, value);
+  		}
+  	}
+
+  	if (parentForm = findParentForm(element)) {
+  		this.resetValue = value;
+  		parentForm.formBindings.push(this);
+  	}
+  };
+
+  Binding.prototype = {
+  	handleChange: function () {
+  		var _this = this;
+
+  		global_runloop.start(this.root);
+  		this.attribute.locked = true;
+  		this.root.viewmodel.set(this.keypath, this.getValue());
+  		global_runloop.scheduleTask(function () {
+  			return _this.attribute.locked = false;
+  		});
+  		global_runloop.end();
+  	},
+
+  	rebound: function () {
+  		var bindings, oldKeypath, newKeypath;
+
+  		oldKeypath = this.keypath;
+  		newKeypath = this.attribute.interpolator.keypath;
+
+  		// The attribute this binding is linked to has already done the work
+  		if (oldKeypath === newKeypath) {
+  			return;
+  		}
+
+  		removeFromArray(this.root._twowayBindings[oldKeypath.str], this);
+
+  		this.keypath = newKeypath;
+
+  		bindings = this.root._twowayBindings[newKeypath.str] || (this.root._twowayBindings[newKeypath.str] = []);
+  		bindings.push(this);
+  	},
+
+  	unbind: function () {}
+  };
+
+  Binding.extend = function (properties) {
+  	var Parent = this,
+  	    SpecialisedBinding;
+
+  	SpecialisedBinding = function (element) {
+  		Binding.call(this, element);
+
+  		if (this.init) {
+  			this.init();
+  		}
+  	};
+
+  	SpecialisedBinding.prototype = create(Parent.prototype);
+  	utils_object__extend(SpecialisedBinding.prototype, properties);
+
+  	SpecialisedBinding.extend = Binding.extend;
+
+  	return SpecialisedBinding;
+  };
+
+  var Binding_Binding = Binding;
+
+  function findParentForm(element) {
+  	while (element = element.parent) {
+  		if (element.name === "form") {
+  			return element;
+  		}
+  	}
+  }
+
+  // this is called when the element is unbound.
+  // Specialised bindings can override it
+
+  // This is the handler for DOM events that would lead to a change in the model
+  // (i.e. change, sometimes, input, and occasionally click and keyup)
+  var handleDomEvent = handleChange;
+
+  function handleChange() {
+  	this._ractive.binding.handleChange();
+  }
+
+  var GenericBinding;
+
+  GenericBinding = Binding_Binding.extend({
+  	getInitialValue: function () {
+  		return "";
+  	},
+
+  	getValue: function () {
+  		return this.element.node.value;
+  	},
+
+  	render: function () {
+  		var node = this.element.node,
+  		    lazy,
+  		    timeout = false;
+  		this.rendered = true;
+
+  		// any lazy setting for this element overrides the root
+  		// if the value is a number, it's a timeout
+  		lazy = this.root.lazy;
+  		if (this.element.lazy === true) {
+  			lazy = true;
+  		} else if (this.element.lazy === false) {
+  			lazy = false;
+  		} else if (is__isNumeric(this.element.lazy)) {
+  			lazy = false;
+  			timeout = +this.element.lazy;
+  		} else if (is__isNumeric(lazy || "")) {
+  			timeout = +lazy;
+  			lazy = false;
+
+  			// make sure the timeout is available to the handler
+  			this.element.lazy = timeout;
+  		}
+
+  		this.handler = timeout ? handleDelay : handleDomEvent;
+
+  		node.addEventListener("change", handleDomEvent, false);
+
+  		if (!lazy) {
+  			node.addEventListener("input", this.handler, false);
+
+  			if (node.attachEvent) {
+  				node.addEventListener("keyup", this.handler, false);
+  			}
+  		}
+
+  		node.addEventListener("blur", handleBlur, false);
+  	},
+
+  	unrender: function () {
+  		var node = this.element.node;
+  		this.rendered = false;
+
+  		node.removeEventListener("change", handleDomEvent, false);
+  		node.removeEventListener("input", this.handler, false);
+  		node.removeEventListener("keyup", this.handler, false);
+  		node.removeEventListener("blur", handleBlur, false);
+  	}
+  });
+
+  var Binding_GenericBinding = GenericBinding;
+
+  function handleBlur() {
+  	var value;
+
+  	handleDomEvent.call(this);
+
+  	value = this._ractive.root.viewmodel.get(this._ractive.binding.keypath);
+  	this.value = value == undefined ? "" : value;
+  }
+
+  function handleDelay() {
+  	var binding = this._ractive.binding,
+  	    el = this;
+
+  	if (!!binding._timeout) clearTimeout(binding._timeout);
+
+  	binding._timeout = setTimeout(function () {
+  		if (binding.rendered) handleDomEvent.call(el);
+  		binding._timeout = undefined;
+  	}, binding.element.lazy);
+  }
+
+  var ContentEditableBinding = Binding_GenericBinding.extend({
+  	getInitialValue: function () {
+  		return this.element.fragment ? this.element.fragment.toString() : "";
+  	},
+
+  	getValue: function () {
+  		return this.element.node.innerHTML;
+  	}
+  });
+
+  var Binding_ContentEditableBinding = ContentEditableBinding;
+
+  var shared_getSiblings = getSiblings;
+  var sets = {};
+  function getSiblings(id, group, keypath) {
+  	var hash = id + group + keypath;
+  	return sets[hash] || (sets[hash] = []);
+  }
+
+  var RadioBinding = Binding_Binding.extend({
+  	name: "checked",
+
+  	init: function () {
+  		this.siblings = shared_getSiblings(this.root._guid, "radio", this.element.getAttribute("name"));
+  		this.siblings.push(this);
+  	},
+
+  	render: function () {
+  		var node = this.element.node;
+
+  		node.addEventListener("change", handleDomEvent, false);
+
+  		if (node.attachEvent) {
+  			node.addEventListener("click", handleDomEvent, false);
+  		}
+  	},
+
+  	unrender: function () {
+  		var node = this.element.node;
+
+  		node.removeEventListener("change", handleDomEvent, false);
+  		node.removeEventListener("click", handleDomEvent, false);
+  	},
+
+  	handleChange: function () {
+  		global_runloop.start(this.root);
+
+  		this.siblings.forEach(function (binding) {
+  			binding.root.viewmodel.set(binding.keypath, binding.getValue());
+  		});
+
+  		global_runloop.end();
+  	},
+
+  	getValue: function () {
+  		return this.element.node.checked;
+  	},
+
+  	unbind: function () {
+  		removeFromArray(this.siblings, this);
+  	}
+  });
+
+  var Binding_RadioBinding = RadioBinding;
+
+  var RadioNameBinding = Binding_Binding.extend({
+  	name: "name",
+
+  	init: function () {
+  		this.siblings = shared_getSiblings(this.root._guid, "radioname", this.keypath.str);
+  		this.siblings.push(this);
+
+  		this.radioName = true; // so that ractive.updateModel() knows what to do with this
+  	},
+
+  	getInitialValue: function () {
+  		if (this.element.getAttribute("checked")) {
+  			return this.element.getAttribute("value");
+  		}
+  	},
+
+  	render: function () {
+  		var node = this.element.node;
+
+  		node.name = "{{" + this.keypath.str + "}}";
+  		node.checked = this.root.viewmodel.get(this.keypath) == this.element.getAttribute("value");
+
+  		node.addEventListener("change", handleDomEvent, false);
+
+  		if (node.attachEvent) {
+  			node.addEventListener("click", handleDomEvent, false);
+  		}
+  	},
+
+  	unrender: function () {
+  		var node = this.element.node;
+
+  		node.removeEventListener("change", handleDomEvent, false);
+  		node.removeEventListener("click", handleDomEvent, false);
+  	},
+
+  	getValue: function () {
+  		var node = this.element.node;
+  		return node._ractive ? node._ractive.value : node.value;
+  	},
+
+  	handleChange: function () {
+  		// If this <input> is the one that's checked, then the value of its
+  		// `name` keypath gets set to its value
+  		if (this.element.node.checked) {
+  			Binding_Binding.prototype.handleChange.call(this);
+  		}
+  	},
+
+  	rebound: function (oldKeypath, newKeypath) {
+  		var node;
+
+  		Binding_Binding.prototype.rebound.call(this, oldKeypath, newKeypath);
+
+  		if (node = this.element.node) {
+  			node.name = "{{" + this.keypath.str + "}}";
+  		}
+  	},
+
+  	unbind: function () {
+  		removeFromArray(this.siblings, this);
+  	}
+  });
+
+  var Binding_RadioNameBinding = RadioNameBinding;
+
+  var CheckboxNameBinding = Binding_Binding.extend({
+  	name: "name",
+
+  	getInitialValue: function () {
+  		// This only gets called once per group (of inputs that
+  		// share a name), because it only gets called if there
+  		// isn't an initial value. By the same token, we can make
+  		// a note of that fact that there was no initial value,
+  		// and populate it using any `checked` attributes that
+  		// exist (which users should avoid, but which we should
+  		// support anyway to avoid breaking expectations)
+  		this.noInitialValue = true;
+  		return [];
+  	},
+
+  	init: function () {
+  		var existingValue, bindingValue;
+
+  		this.checkboxName = true; // so that ractive.updateModel() knows what to do with this
+
+  		// Each input has a reference to an array containing it and its
+  		// siblings, as two-way binding depends on being able to ascertain
+  		// the status of all inputs within the group
+  		this.siblings = shared_getSiblings(this.root._guid, "checkboxes", this.keypath.str);
+  		this.siblings.push(this);
+
+  		if (this.noInitialValue) {
+  			this.siblings.noInitialValue = true;
+  		}
+
+  		// If no initial value was set, and this input is checked, we
+  		// update the model
+  		if (this.siblings.noInitialValue && this.element.getAttribute("checked")) {
+  			existingValue = this.root.viewmodel.get(this.keypath);
+  			bindingValue = this.element.getAttribute("value");
+
+  			existingValue.push(bindingValue);
+  		}
+  	},
+
+  	unbind: function () {
+  		removeFromArray(this.siblings, this);
+  	},
+
+  	render: function () {
+  		var node = this.element.node,
+  		    existingValue,
+  		    bindingValue;
+
+  		existingValue = this.root.viewmodel.get(this.keypath);
+  		bindingValue = this.element.getAttribute("value");
+
+  		if (isArray(existingValue)) {
+  			this.isChecked = arrayContains(existingValue, bindingValue);
+  		} else {
+  			this.isChecked = existingValue == bindingValue;
+  		}
+
+  		node.name = "{{" + this.keypath.str + "}}";
+  		node.checked = this.isChecked;
+
+  		node.addEventListener("change", handleDomEvent, false);
+
+  		// in case of IE emergency, bind to click event as well
+  		if (node.attachEvent) {
+  			node.addEventListener("click", handleDomEvent, false);
+  		}
+  	},
+
+  	unrender: function () {
+  		var node = this.element.node;
+
+  		node.removeEventListener("change", handleDomEvent, false);
+  		node.removeEventListener("click", handleDomEvent, false);
+  	},
+
+  	changed: function () {
+  		var wasChecked = !!this.isChecked;
+  		this.isChecked = this.element.node.checked;
+  		return this.isChecked === wasChecked;
+  	},
+
+  	handleChange: function () {
+  		this.isChecked = this.element.node.checked;
+  		Binding_Binding.prototype.handleChange.call(this);
+  	},
+
+  	getValue: function () {
+  		return this.siblings.filter(isChecked).map(Binding_CheckboxNameBinding__getValue);
+  	}
+  });
+
+  function isChecked(binding) {
+  	return binding.isChecked;
+  }
+
+  function Binding_CheckboxNameBinding__getValue(binding) {
+  	return binding.element.getAttribute("value");
+  }
+
+  var Binding_CheckboxNameBinding = CheckboxNameBinding;
+
+  var CheckboxBinding = Binding_Binding.extend({
+  	name: "checked",
+
+  	render: function () {
+  		var node = this.element.node;
+
+  		node.addEventListener("change", handleDomEvent, false);
+
+  		if (node.attachEvent) {
+  			node.addEventListener("click", handleDomEvent, false);
+  		}
+  	},
+
+  	unrender: function () {
+  		var node = this.element.node;
+
+  		node.removeEventListener("change", handleDomEvent, false);
+  		node.removeEventListener("click", handleDomEvent, false);
+  	},
+
+  	getValue: function () {
+  		return this.element.node.checked;
+  	}
+  });
+
+  var Binding_CheckboxBinding = CheckboxBinding;
+
+  var SelectBinding = Binding_Binding.extend({
+  	getInitialValue: function () {
+  		var options = this.element.options,
+  		    len,
+  		    i,
+  		    value,
+  		    optionWasSelected;
+
+  		if (this.element.getAttribute("value") !== undefined) {
+  			return;
+  		}
+
+  		i = len = options.length;
+
+  		if (!len) {
+  			return;
+  		}
+
+  		// take the final selected option...
+  		while (i--) {
+  			if (options[i].getAttribute("selected")) {
+  				value = options[i].getAttribute("value");
+  				optionWasSelected = true;
+  				break;
+  			}
+  		}
+
+  		// or the first non-disabled option, if none are selected
+  		if (!optionWasSelected) {
+  			while (++i < len) {
+  				if (!options[i].getAttribute("disabled")) {
+  					value = options[i].getAttribute("value");
+  					break;
+  				}
+  			}
+  		}
+
+  		// This is an optimisation (aka hack) that allows us to forgo some
+  		// other more expensive work
+  		if (value !== undefined) {
+  			this.element.attributes.value.value = value;
+  		}
+
+  		return value;
+  	},
+
+  	render: function () {
+  		this.element.node.addEventListener("change", handleDomEvent, false);
+  	},
+
+  	unrender: function () {
+  		this.element.node.removeEventListener("change", handleDomEvent, false);
+  	},
+
+  	// TODO this method is an anomaly... is it necessary?
+  	setValue: function (value) {
+  		this.root.viewmodel.set(this.keypath, value);
+  	},
+
+  	getValue: function () {
+  		var options, i, len, option, optionValue;
+
+  		options = this.element.node.options;
+  		len = options.length;
+
+  		for (i = 0; i < len; i += 1) {
+  			option = options[i];
+
+  			if (options[i].selected) {
+  				optionValue = option._ractive ? option._ractive.value : option.value;
+  				return optionValue;
+  			}
+  		}
+  	},
+
+  	forceUpdate: function () {
+  		var _this = this;
+
+  		var value = this.getValue();
+
+  		if (value !== undefined) {
+  			this.attribute.locked = true;
+  			global_runloop.scheduleTask(function () {
+  				return _this.attribute.locked = false;
+  			});
+  			this.root.viewmodel.set(this.keypath, value);
+  		}
+  	}
+  });
+
+  var Binding_SelectBinding = SelectBinding;
+
+  var MultipleSelectBinding = Binding_SelectBinding.extend({
+  	getInitialValue: function () {
+  		return this.element.options.filter(function (option) {
+  			return option.getAttribute("selected");
+  		}).map(function (option) {
+  			return option.getAttribute("value");
+  		});
+  	},
+
+  	render: function () {
+  		var valueFromModel;
+
+  		this.element.node.addEventListener("change", handleDomEvent, false);
+
+  		valueFromModel = this.root.viewmodel.get(this.keypath);
+
+  		if (valueFromModel === undefined) {
+  			// get value from DOM, if possible
+  			this.handleChange();
+  		}
+  	},
+
+  	unrender: function () {
+  		this.element.node.removeEventListener("change", handleDomEvent, false);
+  	},
+
+  	setValue: function () {
+  		throw new Error("TODO not implemented yet");
+  	},
+
+  	getValue: function () {
+  		var selectedValues, options, i, len, option, optionValue;
+
+  		selectedValues = [];
+  		options = this.element.node.options;
+  		len = options.length;
+
+  		for (i = 0; i < len; i += 1) {
+  			option = options[i];
+
+  			if (option.selected) {
+  				optionValue = option._ractive ? option._ractive.value : option.value;
+  				selectedValues.push(optionValue);
+  			}
+  		}
+
+  		return selectedValues;
+  	},
+
+  	handleChange: function () {
+  		var attribute, previousValue, value;
+
+  		attribute = this.attribute;
+  		previousValue = attribute.value;
+
+  		value = this.getValue();
+
+  		if (previousValue === undefined || !arrayContentsMatch(value, previousValue)) {
+  			Binding_SelectBinding.prototype.handleChange.call(this);
+  		}
+
+  		return this;
+  	},
+
+  	forceUpdate: function () {
+  		var _this = this;
+
+  		var value = this.getValue();
+
+  		if (value !== undefined) {
+  			this.attribute.locked = true;
+  			global_runloop.scheduleTask(function () {
+  				return _this.attribute.locked = false;
+  			});
+  			this.root.viewmodel.set(this.keypath, value);
+  		}
+  	},
+
+  	updateModel: function () {
+  		if (this.attribute.value === undefined || !this.attribute.value.length) {
+  			this.root.viewmodel.set(this.keypath, this.initialValue);
+  		}
+  	}
+  });
+
+  var Binding_MultipleSelectBinding = MultipleSelectBinding;
+
+  var FileListBinding = Binding_Binding.extend({
+  	render: function () {
+  		this.element.node.addEventListener("change", handleDomEvent, false);
+  	},
+
+  	unrender: function () {
+  		this.element.node.removeEventListener("change", handleDomEvent, false);
+  	},
+
+  	getValue: function () {
+  		return this.element.node.files;
+  	}
+  });
+
+  var Binding_FileListBinding = FileListBinding;
+
+  var NumericBinding = Binding_GenericBinding.extend({
+  	getInitialValue: function () {
+  		return undefined;
+  	},
+
+  	getValue: function () {
+  		var value = parseFloat(this.element.node.value);
+  		return isNaN(value) ? undefined : value;
+  	}
+  });
+
+  var init_createTwowayBinding = createTwowayBinding;
+
+  function createTwowayBinding(element) {
+  	var attributes = element.attributes,
+  	    type,
+  	    Binding,
+  	    bindName,
+  	    bindChecked,
+  	    binding;
+
+  	// if this is a late binding, and there's already one, it
+  	// needs to be torn down
+  	if (element.binding) {
+  		element.binding.teardown();
+  		element.binding = null;
+  	}
+
+  	// contenteditable
+  	if (
+  	// if the contenteditable attribute is true or is bindable and may thus become true
+  	(element.getAttribute("contenteditable") || !!attributes.contenteditable && isBindable(attributes.contenteditable)) && isBindable(attributes.value)) {
+  		Binding = Binding_ContentEditableBinding;
+  	}
+
+  	// <input>
+  	else if (element.name === "input") {
+  		type = element.getAttribute("type");
+
+  		if (type === "radio" || type === "checkbox") {
+  			bindName = isBindable(attributes.name);
+  			bindChecked = isBindable(attributes.checked);
+
+  			// we can either bind the name attribute, or the checked attribute - not both
+  			if (bindName && bindChecked) {
+  				warnIfDebug("A radio input can have two-way binding on its name attribute, or its checked attribute - not both", { ractive: element.root });
+  			}
+
+  			if (bindName) {
+  				Binding = type === "radio" ? Binding_RadioNameBinding : Binding_CheckboxNameBinding;
+  			} else if (bindChecked) {
+  				Binding = type === "radio" ? Binding_RadioBinding : Binding_CheckboxBinding;
+  			}
+  		} else if (type === "file" && isBindable(attributes.value)) {
+  			Binding = Binding_FileListBinding;
+  		} else if (isBindable(attributes.value)) {
+  			Binding = type === "number" || type === "range" ? NumericBinding : Binding_GenericBinding;
+  		}
+  	}
+
+  	// <select>
+  	else if (element.name === "select" && isBindable(attributes.value)) {
+  		Binding = element.getAttribute("multiple") ? Binding_MultipleSelectBinding : Binding_SelectBinding;
+  	}
+
+  	// <textarea>
+  	else if (element.name === "textarea" && isBindable(attributes.value)) {
+  		Binding = Binding_GenericBinding;
+  	}
+
+  	if (Binding && (binding = new Binding(element)) && binding.keypath) {
+  		return binding;
+  	}
+  }
+
+  function isBindable(attribute) {
+  	return attribute && attribute.isBindable;
+  }
+
+  // and this element also has a value attribute to bind
+
+  var EventHandler_prototype_bubble = EventHandler$bubble;
+
+  function EventHandler$bubble() {
+  	var hasAction = this.getAction();
+
+  	if (hasAction && !this.hasListener) {
+  		this.listen();
+  	} else if (!hasAction && this.hasListener) {
+  		this.unrender();
+  	}
+  }
+
+  // This function may be overwritten, if the event directive
+  // includes parameters
+  var EventHandler_prototype_fire = EventHandler$fire;
+  function EventHandler$fire(event) {
+  	shared_fireEvent(this.root, this.getAction(), { event: event });
+  }
+
+  var getAction = EventHandler$getAction;
+
+  function EventHandler$getAction() {
+  	return this.action.toString().trim();
+  }
+
+  var EventHandler_prototype_init = EventHandler$init;
+
+  var eventPattern = /^event(?:\.(.+))?/;
+  function EventHandler$init(element, name, template) {
+  	var _this = this;
+
+  	var action, refs, ractive;
+
+  	this.element = element;
+  	this.root = element.root;
+  	this.parentFragment = element.parentFragment;
+  	this.name = name;
+
+  	if (name.indexOf("*") !== -1) {
+  		fatal("Only component proxy-events may contain \"*\" wildcards, <%s on-%s=\"...\"/> is not valid", element.name, name);
+  		this.invalid = true;
+  	}
+
+  	if (template.m) {
+  		refs = template.a.r;
+
+  		// This is a method call
+  		this.method = template.m;
+  		this.keypaths = [];
+  		this.fn = shared_getFunctionFromString(template.a.s, refs.length);
+
+  		this.parentFragment = element.parentFragment;
+  		ractive = this.root;
+
+  		// Create resolvers for each reference
+  		this.refResolvers = [];
+  		refs.forEach(function (ref, i) {
+  			var match = undefined;
+
+  			// special case - the `event` object
+  			if (match = eventPattern.exec(ref)) {
+  				_this.keypaths[i] = {
+  					eventObject: true,
+  					refinements: match[1] ? match[1].split(".") : []
+  				};
+  			} else {
+  				_this.refResolvers.push(Resolvers_createReferenceResolver(_this, ref, function (keypath) {
+  					return _this.resolve(i, keypath);
+  				}));
+  			}
+  		});
+
+  		this.fire = fireMethodCall;
+  	} else {
+  		// Get action ('foo' in 'on-click='foo')
+  		action = template.n || template;
+  		if (typeof action !== "string") {
+  			action = new virtualdom_Fragment({
+  				template: action,
+  				root: this.root,
+  				owner: this
+  			});
+  		}
+
+  		this.action = action;
+
+  		// Get parameters
+  		if (template.d) {
+  			this.dynamicParams = new virtualdom_Fragment({
+  				template: template.d,
+  				root: this.root,
+  				owner: this.element
+  			});
+
+  			this.fire = fireEventWithDynamicParams;
+  		} else if (template.a) {
+  			this.params = template.a;
+  			this.fire = fireEventWithParams;
+  		}
+  	}
+  }
+
+  function fireMethodCall(event) {
+  	var ractive, values, args;
+
+  	ractive = this.root;
+
+  	if (typeof ractive[this.method] !== "function") {
+  		throw new Error("Attempted to call a non-existent method (\"" + this.method + "\")");
+  	}
+
+  	values = this.keypaths.map(function (keypath) {
+  		var value, len, i;
+
+  		if (keypath === undefined) {
+  			// not yet resolved
+  			return undefined;
+  		}
+
+  		// TODO the refinements stuff would be better handled at parse time
+  		if (keypath.eventObject) {
+  			value = event;
+
+  			if (len = keypath.refinements.length) {
+  				for (i = 0; i < len; i += 1) {
+  					value = value[keypath.refinements[i]];
+  				}
+  			}
+  		} else {
+  			value = ractive.viewmodel.get(keypath);
+  		}
+
+  		return value;
+  	});
+
+  	shared_eventStack.enqueue(ractive, event);
+
+  	args = this.fn.apply(null, values);
+  	ractive[this.method].apply(ractive, args);
+
+  	shared_eventStack.dequeue(ractive);
+  }
+
+  function fireEventWithParams(event) {
+  	shared_fireEvent(this.root, this.getAction(), { event: event, args: this.params });
+  }
+
+  function fireEventWithDynamicParams(event) {
+  	var args = this.dynamicParams.getArgsList();
+
+  	// need to strip [] from ends if a string!
+  	if (typeof args === "string") {
+  		args = args.substr(1, args.length - 2);
+  	}
+
+  	shared_fireEvent(this.root, this.getAction(), { event: event, args: args });
+  }
+
+  var shared_genericHandler = genericHandler;
+  function genericHandler(event) {
+  	var storage,
+  	    handler,
+  	    indices,
+  	    index = {};
+
+  	storage = this._ractive;
+  	handler = storage.events[event.type];
+
+  	if (indices = Resolvers_findIndexRefs(handler.element.parentFragment)) {
+  		index = Resolvers_findIndexRefs.resolve(indices);
+  	}
+
+  	handler.fire({
+  		node: this,
+  		original: event,
+  		index: index,
+  		keypath: storage.keypath.str,
+  		context: storage.root.viewmodel.get(storage.keypath)
+  	});
+  }
+
+  var listen = EventHandler$listen;
+
+  var customHandlers = {},
+      touchEvents = {
+  	touchstart: true,
+  	touchmove: true,
+  	touchend: true,
+  	touchcancel: true,
+  	//not w3c, but supported in some browsers
+  	touchleave: true
+  };
+  function EventHandler$listen() {
+  	var definition,
+  	    name = this.name;
+
+  	if (this.invalid) {
+  		return;
+  	}
+
+  	if (definition = findInViewHierarchy("events", this.root, name)) {
+  		this.custom = definition(this.node, getCustomHandler(name));
+  	} else {
+  		// Looks like we're dealing with a standard DOM event... but let's check
+  		if (!("on" + name in this.node) && !(window && "on" + name in window) && !isJsdom) {
+
+  			// okay to use touch events if this browser doesn't support them
+  			if (!touchEvents[name]) {
+  				warnOnceIfDebug(missingPlugin(name, "event"), { node: this.node });
+  			}
+
+  			return;
+  		}
+
+  		this.node.addEventListener(name, shared_genericHandler, false);
+  	}
+
+  	this.hasListener = true;
+  }
+
+  function getCustomHandler(name) {
+  	if (!customHandlers[name]) {
+  		customHandlers[name] = function (event) {
+  			var storage = event.node._ractive;
+
+  			event.index = storage.index;
+  			event.keypath = storage.keypath.str;
+  			event.context = storage.root.viewmodel.get(storage.keypath);
+
+  			storage.events[name].fire(event);
+  		};
+  	}
+
+  	return customHandlers[name];
+  }
+
+  var EventHandler_prototype_rebind = EventHandler$rebind;
+
+  function EventHandler$rebind(oldKeypath, newKeypath) {
+  	var fragment;
+  	if (this.method) {
+  		fragment = this.element.parentFragment;
+  		this.refResolvers.forEach(rebind);
+
+  		return;
+  	}
+
+  	if (typeof this.action !== "string") {
+  		rebind(this.action);
+  	}
+
+  	if (this.dynamicParams) {
+  		rebind(this.dynamicParams);
+  	}
+
+  	function rebind(thing) {
+  		thing && thing.rebind(oldKeypath, newKeypath);
+  	}
+  }
+
+  var EventHandler_prototype_render = EventHandler$render;
+
+  function EventHandler$render() {
+  	this.node = this.element.node;
+  	// store this on the node itself, so it can be retrieved by a
+  	// universal handler
+  	this.node._ractive.events[this.name] = this;
+
+  	if (this.method || this.getAction()) {
+  		this.listen();
+  	}
+  }
+
+  var prototype_resolve = EventHandler$resolve;
+
+  function EventHandler$resolve(index, keypath) {
+  	this.keypaths[index] = keypath;
+  }
+
+  var EventHandler_prototype_unbind = EventHandler$unbind;
+  function EventHandler$unbind() {
+  	if (this.method) {
+  		this.refResolvers.forEach(methodCallers__unbind);
+  		return;
+  	}
+
+  	// Tear down dynamic name
+  	if (typeof this.action !== "string") {
+  		this.action.unbind();
+  	}
+
+  	// Tear down dynamic parameters
+  	if (this.dynamicParams) {
+  		this.dynamicParams.unbind();
+  	}
+  }
+
+  var EventHandler_prototype_unrender = EventHandler$unrender;
+  function EventHandler$unrender() {
+
+  	if (this.custom) {
+  		this.custom.teardown();
+  	} else {
+  		this.node.removeEventListener(this.name, shared_genericHandler, false);
+  	}
+
+  	this.hasListener = false;
+  }
+
+  var EventHandler = function (element, name, template) {
+  	this.init(element, name, template);
+  };
+
+  EventHandler.prototype = {
+  	bubble: EventHandler_prototype_bubble,
+  	fire: EventHandler_prototype_fire,
+  	getAction: getAction,
+  	init: EventHandler_prototype_init,
+  	listen: listen,
+  	rebind: EventHandler_prototype_rebind,
+  	render: EventHandler_prototype_render,
+  	resolve: prototype_resolve,
+  	unbind: EventHandler_prototype_unbind,
+  	unrender: EventHandler_prototype_unrender
+  };
+
+  var _EventHandler = EventHandler;
+
+  var createEventHandlers = function (element, template) {
+  	var i,
+  	    name,
+  	    names,
+  	    handler,
+  	    result = [];
+
+  	for (name in template) {
+  		if (template.hasOwnProperty(name)) {
+  			names = name.split("-");
+  			i = names.length;
+
+  			while (i--) {
+  				handler = new _EventHandler(element, names[i], template[name]);
+  				result.push(handler);
+  			}
+  		}
+  	}
+
+  	return result;
+  };
+
+  var Decorator = function (element, template) {
+  	var self = this,
+  	    ractive,
+  	    name,
+  	    fragment;
+
+  	this.element = element;
+  	this.root = ractive = element.root;
+
+  	name = template.n || template;
+
+  	if (typeof name !== "string") {
+  		fragment = new virtualdom_Fragment({
+  			template: name,
+  			root: ractive,
+  			owner: element
+  		});
+
+  		name = fragment.toString();
+  		fragment.unbind();
+
+  		if (name === "") {
+  			// empty string okay, just no decorator
+  			return;
+  		}
+  	}
+
+  	if (template.a) {
+  		this.params = template.a;
+  	} else if (template.d) {
+  		this.fragment = new virtualdom_Fragment({
+  			template: template.d,
+  			root: ractive,
+  			owner: element
+  		});
+
+  		this.params = this.fragment.getArgsList();
+
+  		this.fragment.bubble = function () {
+  			this.dirtyArgs = this.dirtyValue = true;
+  			self.params = this.getArgsList();
+
+  			if (self.ready) {
+  				self.update();
+  			}
+  		};
+  	}
+
+  	this.fn = findInViewHierarchy("decorators", ractive, name);
+
+  	if (!this.fn) {
+  		fatal(missingPlugin(name, "decorator"));
+  	}
+  };
+
+  Decorator.prototype = {
+  	init: function () {
+  		var node, result, args;
+
+  		node = this.element.node;
+
+  		if (this.params) {
+  			args = [node].concat(this.params);
+  			result = this.fn.apply(this.root, args);
+  		} else {
+  			result = this.fn.call(this.root, node);
+  		}
+
+  		if (!result || !result.teardown) {
+  			throw new Error("Decorator definition must return an object with a teardown method");
+  		}
+
+  		// TODO does this make sense?
+  		this.actual = result;
+  		this.ready = true;
+  	},
+
+  	update: function () {
+  		if (this.actual.update) {
+  			this.actual.update.apply(this.root, this.params);
+  		} else {
+  			this.actual.teardown(true);
+  			this.init();
+  		}
+  	},
+
+  	rebind: function (oldKeypath, newKeypath) {
+  		if (this.fragment) {
+  			this.fragment.rebind(oldKeypath, newKeypath);
+  		}
+  	},
+
+  	teardown: function (updating) {
+  		this.torndown = true;
+  		if (this.ready) {
+  			this.actual.teardown();
+  		}
+
+  		if (!updating && this.fragment) {
+  			this.fragment.unbind();
+  		}
+  	}
+  };
+
+  var _Decorator = Decorator;
+
+  function select__bubble() {
+  	var _this = this;
+
+  	if (!this.dirty) {
+  		this.dirty = true;
+
+  		global_runloop.scheduleTask(function () {
+  			sync(_this);
+  			_this.dirty = false;
+  		});
+  	}
+
+  	this.parentFragment.bubble(); // default behaviour
+  }
+
+  function sync(selectElement) {
+  	var selectNode, selectValue, isMultiple, options, optionWasSelected;
+
+  	selectNode = selectElement.node;
+
+  	if (!selectNode) {
+  		return;
+  	}
+
+  	options = toArray(selectNode.options);
+
+  	selectValue = selectElement.getAttribute("value");
+  	isMultiple = selectElement.getAttribute("multiple");
+
+  	// If the <select> has a specified value, that should override
+  	// these options
+  	if (selectValue !== undefined) {
+  		options.forEach(function (o) {
+  			var optionValue, shouldSelect;
+
+  			optionValue = o._ractive ? o._ractive.value : o.value;
+  			shouldSelect = isMultiple ? valueContains(selectValue, optionValue) : selectValue == optionValue;
+
+  			if (shouldSelect) {
+  				optionWasSelected = true;
+  			}
+
+  			o.selected = shouldSelect;
+  		});
+
+  		if (!optionWasSelected) {
+  			if (options[0]) {
+  				options[0].selected = true;
+  			}
+
+  			if (selectElement.binding) {
+  				selectElement.binding.forceUpdate();
+  			}
+  		}
+  	}
+
+  	// Otherwise the value should be initialised according to which
+  	// <option> element is selected, if twoway binding is in effect
+  	else if (selectElement.binding) {
+  		selectElement.binding.forceUpdate();
+  	}
+  }
+
+  function valueContains(selectValue, optionValue) {
+  	var i = selectValue.length;
+  	while (i--) {
+  		if (selectValue[i] == optionValue) {
+  			return true;
+  		}
+  	}
+  }
+
+  function special_option__init(option, template) {
+  	option.select = findParentSelect(option.parent);
+
+  	// we might be inside a <datalist> element
+  	if (!option.select) {
+  		return;
+  	}
+
+  	option.select.options.push(option);
+
+  	// If the value attribute is missing, use the element's content
+  	if (!template.a) {
+  		template.a = {};
+  	}
+
+  	// ...as long as it isn't disabled
+  	if (template.a.value === undefined && !template.a.hasOwnProperty("disabled")) {
+  		template.a.value = template.f;
+  	}
+
+  	// If there is a `selected` attribute, but the <select>
+  	// already has a value, delete it
+  	if ("selected" in template.a && option.select.getAttribute("value") !== undefined) {
+  		delete template.a.selected;
+  	}
+  }
+
+  function special_option__unbind(option) {
+  	if (option.select) {
+  		removeFromArray(option.select.options, option);
+  	}
+  }
+
+  function findParentSelect(element) {
+  	if (!element) {
+  		return;
+  	}
+
+  	do {
+  		if (element.name === "select") {
+  			return element;
+  		}
+  	} while (element = element.parent);
+  }
+
+  var Element_prototype_init = Element$init;
+  function Element$init(options) {
+  	var parentFragment, template, ractive, binding, bindings, twoway, bindingAttrs;
+
+  	this.type = ELEMENT;
+
+  	// stuff we'll need later
+  	parentFragment = this.parentFragment = options.parentFragment;
+  	template = this.template = options.template;
+
+  	this.parent = options.pElement || parentFragment.pElement;
+
+  	this.root = ractive = parentFragment.root;
+  	this.index = options.index;
+  	this.key = options.key;
+
+  	this.name = enforceCase(template.e);
+
+  	// Special case - <option> elements
+  	if (this.name === "option") {
+  		special_option__init(this, template);
+  	}
+
+  	// Special case - <select> elements
+  	if (this.name === "select") {
+  		this.options = [];
+  		this.bubble = select__bubble; // TODO this is a kludge
+  	}
+
+  	// Special case - <form> elements
+  	if (this.name === "form") {
+  		this.formBindings = [];
+  	}
+
+  	// handle binding attributes first (twoway, lazy)
+  	bindingAttrs = processBindingAttributes(this, template);
+
+  	// create attributes
+  	this.attributes = createAttributes(this, template.a);
+  	this.conditionalAttributes = createConditionalAttributes(this, template.m);
+
+  	// append children, if there are any
+  	if (template.f) {
+  		this.fragment = new virtualdom_Fragment({
+  			template: template.f,
+  			root: ractive,
+  			owner: this,
+  			pElement: this,
+  			cssIds: null
+  		});
+  	}
+
+  	// the element setting should override the ractive setting
+  	twoway = ractive.twoway;
+  	if (bindingAttrs.twoway === false) twoway = false;else if (bindingAttrs.twoway === true) twoway = true;
+
+  	this.twoway = twoway;
+  	this.lazy = bindingAttrs.lazy;
+
+  	// create twoway binding
+  	if (twoway && (binding = init_createTwowayBinding(this, template.a))) {
+  		this.binding = binding;
+
+  		// register this with the root, so that we can do ractive.updateModel()
+  		bindings = this.root._twowayBindings[binding.keypath.str] || (this.root._twowayBindings[binding.keypath.str] = []);
+  		bindings.push(binding);
+  	}
+
+  	// create event proxies
+  	if (template.v) {
+  		this.eventHandlers = createEventHandlers(this, template.v);
+  	}
+
+  	// create decorator
+  	if (template.o) {
+  		this.decorator = new _Decorator(this, template.o);
+  	}
+
+  	// create transitions
+  	this.intro = template.t0 || template.t1;
+  	this.outro = template.t0 || template.t2;
+  }
+
+  var Element_prototype_rebind = Element$rebind;
+  function Element$rebind(oldKeypath, newKeypath) {
+  	var i, storage, liveQueries, ractive;
+
+  	if (this.attributes) {
+  		this.attributes.forEach(rebind);
+  	}
+
+  	if (this.conditionalAttributes) {
+  		this.conditionalAttributes.forEach(rebind);
+  	}
+
+  	if (this.eventHandlers) {
+  		this.eventHandlers.forEach(rebind);
+  	}
+
+  	if (this.decorator) {
+  		rebind(this.decorator);
+  	}
+
+  	// rebind children
+  	if (this.fragment) {
+  		rebind(this.fragment);
+  	}
+
+  	// Update live queries, if necessary
+  	if (liveQueries = this.liveQueries) {
+  		ractive = this.root;
+
+  		i = liveQueries.length;
+  		while (i--) {
+  			liveQueries[i]._makeDirty();
+  		}
+  	}
+
+  	if (this.node && (storage = this.node._ractive)) {
+
+  		// adjust keypath if needed
+  		assignNewKeypath(storage, "keypath", oldKeypath, newKeypath);
+  	}
+
+  	function rebind(thing) {
+  		thing.rebind(oldKeypath, newKeypath);
+  	}
+  }
+
+  function special_img__render(img) {
+  	var loadHandler;
+
+  	// if this is an <img>, and we're in a crap browser, we may need to prevent it
+  	// from overriding width and height when it loads the src
+  	if (img.attributes.width || img.attributes.height) {
+  		img.node.addEventListener("load", loadHandler = function () {
+  			var width = img.getAttribute("width"),
+  			    height = img.getAttribute("height");
+
+  			if (width !== undefined) {
+  				img.node.setAttribute("width", width);
+  			}
+
+  			if (height !== undefined) {
+  				img.node.setAttribute("height", height);
+  			}
+
+  			img.node.removeEventListener("load", loadHandler, false);
+  		}, false);
+  	}
+  }
+
+  function form__render(element) {
+  	element.node.addEventListener("reset", handleReset, false);
+  }
+
+  function form__unrender(element) {
+  	element.node.removeEventListener("reset", handleReset, false);
+  }
+
+  function handleReset() {
+  	var element = this._ractive.proxy;
+
+  	global_runloop.start();
+  	element.formBindings.forEach(updateModel);
+  	global_runloop.end();
+  }
+
+  function updateModel(binding) {
+  	binding.root.viewmodel.set(binding.keypath, binding.resetValue);
+  }
+
+  var Transition_prototype_init = Transition$init;
+  function Transition$init(element, template, isIntro) {
+  	var ractive, name, fragment;
+
+  	this.element = element;
+  	this.root = ractive = element.root;
+  	this.isIntro = isIntro;
+
+  	name = template.n || template;
+
+  	if (typeof name !== "string") {
+  		fragment = new virtualdom_Fragment({
+  			template: name,
+  			root: ractive,
+  			owner: element
+  		});
+
+  		name = fragment.toString();
+  		fragment.unbind();
+
+  		if (name === "") {
+  			// empty string okay, just no transition
+  			return;
+  		}
+  	}
+
+  	this.name = name;
+
+  	if (template.a) {
+  		this.params = template.a;
+  	} else if (template.d) {
+  		// TODO is there a way to interpret dynamic arguments without all the
+  		// 'dependency thrashing'?
+  		fragment = new virtualdom_Fragment({
+  			template: template.d,
+  			root: ractive,
+  			owner: element
+  		});
+
+  		this.params = fragment.getArgsList();
+  		fragment.unbind();
+  	}
+
+  	this._fn = findInViewHierarchy("transitions", ractive, name);
+
+  	if (!this._fn) {
+  		warnOnceIfDebug(missingPlugin(name, "transition"), { ractive: this.root });
+  	}
+  }
+
+  var camelCase = function (hyphenatedStr) {
+  	return hyphenatedStr.replace(/-([a-zA-Z])/g, function (match, $1) {
+  		return $1.toUpperCase();
+  	});
+  };
+
+  var helpers_prefix__prefix, prefixCache, helpers_prefix__testStyle;
+
+  if (!isClient) {
+  	helpers_prefix__prefix = null;
+  } else {
+  	prefixCache = {};
+  	helpers_prefix__testStyle = createElement("div").style;
+
+  	helpers_prefix__prefix = function (prop) {
+  		var i, vendor, capped;
+
+  		prop = camelCase(prop);
+
+  		if (!prefixCache[prop]) {
+  			if (helpers_prefix__testStyle[prop] !== undefined) {
+  				prefixCache[prop] = prop;
+  			} else {
+  				// test vendors...
+  				capped = prop.charAt(0).toUpperCase() + prop.substring(1);
+
+  				i = vendors.length;
+  				while (i--) {
+  					vendor = vendors[i];
+  					if (helpers_prefix__testStyle[vendor + capped] !== undefined) {
+  						prefixCache[prop] = vendor + capped;
+  						break;
+  					}
+  				}
+  			}
+  		}
+
+  		return prefixCache[prop];
+  	};
+  }
+
+  var helpers_prefix = helpers_prefix__prefix;
+
+  var getStyle, prototype_getStyle__getComputedStyle;
+
+  if (!isClient) {
+  	getStyle = null;
+  } else {
+  	prototype_getStyle__getComputedStyle = window.getComputedStyle || legacy.getComputedStyle;
+
+  	getStyle = function (props) {
+  		var computedStyle, styles, i, prop, value;
+
+  		computedStyle = prototype_getStyle__getComputedStyle(this.node);
+
+  		if (typeof props === "string") {
+  			value = computedStyle[helpers_prefix(props)];
+  			if (value === "0px") {
+  				value = 0;
+  			}
+  			return value;
+  		}
+
+  		if (!isArray(props)) {
+  			throw new Error("Transition$getStyle must be passed a string, or an array of strings representing CSS properties");
+  		}
+
+  		styles = {};
+
+  		i = props.length;
+  		while (i--) {
+  			prop = props[i];
+  			value = computedStyle[helpers_prefix(prop)];
+  			if (value === "0px") {
+  				value = 0;
+  			}
+  			styles[prop] = value;
+  		}
+
+  		return styles;
+  	};
+  }
+
+  var prototype_getStyle = getStyle;
+
+  var setStyle = function (style, value) {
+  	var prop;
+
+  	if (typeof style === "string") {
+  		this.node.style[helpers_prefix(style)] = value;
+  	} else {
+  		for (prop in style) {
+  			if (style.hasOwnProperty(prop)) {
+  				this.node.style[helpers_prefix(prop)] = style[prop];
+  			}
+  		}
+  	}
+
+  	return this;
+  };
+
+  var Ticker = function (options) {
+  	var easing;
+
+  	this.duration = options.duration;
+  	this.step = options.step;
+  	this.complete = options.complete;
+
+  	// easing
+  	if (typeof options.easing === "string") {
+  		easing = options.root.easing[options.easing];
+
+  		if (!easing) {
+  			warnOnceIfDebug(missingPlugin(options.easing, "easing"));
+  			easing = linear;
+  		}
+  	} else if (typeof options.easing === "function") {
+  		easing = options.easing;
+  	} else {
+  		easing = linear;
+  	}
+
+  	this.easing = easing;
+
+  	this.start = utils_getTime();
+  	this.end = this.start + this.duration;
+
+  	this.running = true;
+  	shared_animations.add(this);
+  };
+
+  Ticker.prototype = {
+  	tick: function (now) {
+  		var elapsed, eased;
+
+  		if (!this.running) {
+  			return false;
+  		}
+
+  		if (now > this.end) {
+  			if (this.step) {
+  				this.step(1);
+  			}
+
+  			if (this.complete) {
+  				this.complete(1);
+  			}
+
+  			return false;
+  		}
+
+  		elapsed = now - this.start;
+  		eased = this.easing(elapsed / this.duration);
+
+  		if (this.step) {
+  			this.step(eased);
+  		}
+
+  		return true;
+  	},
+
+  	stop: function () {
+  		if (this.abort) {
+  			this.abort();
+  		}
+
+  		this.running = false;
+  	}
+  };
+
+  var shared_Ticker = Ticker;
+  function linear(t) {
+  	return t;
+  }
+
+  var unprefixPattern = new RegExp("^-(?:" + vendors.join("|") + ")-");
+
+  var unprefix = function (prop) {
+  	return prop.replace(unprefixPattern, "");
+  };
+
+  var vendorPattern = new RegExp("^(?:" + vendors.join("|") + ")([A-Z])");
+
+  var hyphenate = function (str) {
+  	var hyphenated;
+
+  	if (!str) {
+  		return ""; // edge case
+  	}
+
+  	if (vendorPattern.test(str)) {
+  		str = "-" + str;
+  	}
+
+  	hyphenated = str.replace(/[A-Z]/g, function (match) {
+  		return "-" + match.toLowerCase();
+  	});
+
+  	return hyphenated;
+  };
+
+  var createTransitions,
+      animateStyle_createTransitions__testStyle,
+      TRANSITION,
+      TRANSITIONEND,
+      CSS_TRANSITIONS_ENABLED,
+      TRANSITION_DURATION,
+      TRANSITION_PROPERTY,
+      TRANSITION_TIMING_FUNCTION,
+      canUseCssTransitions = {},
+      cannotUseCssTransitions = {};
+
+  if (!isClient) {
+  	createTransitions = null;
+  } else {
+  	animateStyle_createTransitions__testStyle = createElement("div").style;
+
+  	// determine some facts about our environment
+  	(function () {
+  		if (animateStyle_createTransitions__testStyle.transition !== undefined) {
+  			TRANSITION = "transition";
+  			TRANSITIONEND = "transitionend";
+  			CSS_TRANSITIONS_ENABLED = true;
+  		} else if (animateStyle_createTransitions__testStyle.webkitTransition !== undefined) {
+  			TRANSITION = "webkitTransition";
+  			TRANSITIONEND = "webkitTransitionEnd";
+  			CSS_TRANSITIONS_ENABLED = true;
+  		} else {
+  			CSS_TRANSITIONS_ENABLED = false;
+  		}
+  	})();
+
+  	if (TRANSITION) {
+  		TRANSITION_DURATION = TRANSITION + "Duration";
+  		TRANSITION_PROPERTY = TRANSITION + "Property";
+  		TRANSITION_TIMING_FUNCTION = TRANSITION + "TimingFunction";
+  	}
+
+  	createTransitions = function (t, to, options, changedProperties, resolve) {
+
+  		// Wait a beat (otherwise the target styles will be applied immediately)
+  		// TODO use a fastdom-style mechanism?
+  		setTimeout(function () {
+
+  			var hashPrefix, jsTransitionsComplete, cssTransitionsComplete, checkComplete, transitionEndHandler;
+
+  			checkComplete = function () {
+  				if (jsTransitionsComplete && cssTransitionsComplete) {
+  					// will changes to events and fire have an unexpected consequence here?
+  					t.root.fire(t.name + ":end", t.node, t.isIntro);
+  					resolve();
+  				}
+  			};
+
+  			// this is used to keep track of which elements can use CSS to animate
+  			// which properties
+  			hashPrefix = (t.node.namespaceURI || "") + t.node.tagName;
+
+  			t.node.style[TRANSITION_PROPERTY] = changedProperties.map(helpers_prefix).map(hyphenate).join(",");
+  			t.node.style[TRANSITION_TIMING_FUNCTION] = hyphenate(options.easing || "linear");
+  			t.node.style[TRANSITION_DURATION] = options.duration / 1000 + "s";
+
+  			transitionEndHandler = function (event) {
+  				var index;
+
+  				index = changedProperties.indexOf(camelCase(unprefix(event.propertyName)));
+  				if (index !== -1) {
+  					changedProperties.splice(index, 1);
+  				}
+
+  				if (changedProperties.length) {
+  					// still transitioning...
+  					return;
+  				}
+
+  				t.node.removeEventListener(TRANSITIONEND, transitionEndHandler, false);
+
+  				cssTransitionsComplete = true;
+  				checkComplete();
+  			};
+
+  			t.node.addEventListener(TRANSITIONEND, transitionEndHandler, false);
+
+  			setTimeout(function () {
+  				var i = changedProperties.length,
+  				    hash,
+  				    originalValue,
+  				    index,
+  				    propertiesToTransitionInJs = [],
+  				    prop,
+  				    suffix;
+
+  				while (i--) {
+  					prop = changedProperties[i];
+  					hash = hashPrefix + prop;
+
+  					if (CSS_TRANSITIONS_ENABLED && !cannotUseCssTransitions[hash]) {
+  						t.node.style[helpers_prefix(prop)] = to[prop];
+
+  						// If we're not sure if CSS transitions are supported for
+  						// this tag/property combo, find out now
+  						if (!canUseCssTransitions[hash]) {
+  							originalValue = t.getStyle(prop);
+
+  							// if this property is transitionable in this browser,
+  							// the current style will be different from the target style
+  							canUseCssTransitions[hash] = t.getStyle(prop) != to[prop];
+  							cannotUseCssTransitions[hash] = !canUseCssTransitions[hash];
+
+  							// Reset, if we're going to use timers after all
+  							if (cannotUseCssTransitions[hash]) {
+  								t.node.style[helpers_prefix(prop)] = originalValue;
+  							}
+  						}
+  					}
+
+  					if (!CSS_TRANSITIONS_ENABLED || cannotUseCssTransitions[hash]) {
+  						// we need to fall back to timer-based stuff
+  						if (originalValue === undefined) {
+  							originalValue = t.getStyle(prop);
+  						}
+
+  						// need to remove this from changedProperties, otherwise transitionEndHandler
+  						// will get confused
+  						index = changedProperties.indexOf(prop);
+  						if (index === -1) {
+  							warnIfDebug("Something very strange happened with transitions. Please raise an issue at https://github.com/ractivejs/ractive/issues - thanks!", { node: t.node });
+  						} else {
+  							changedProperties.splice(index, 1);
+  						}
+
+  						// TODO Determine whether this property is animatable at all
+
+  						suffix = /[^\d]*$/.exec(to[prop])[0];
+
+  						// ...then kick off a timer-based transition
+  						propertiesToTransitionInJs.push({
+  							name: helpers_prefix(prop),
+  							interpolator: shared_interpolate(parseFloat(originalValue), parseFloat(to[prop])),
+  							suffix: suffix
+  						});
+  					}
+  				}
+
+  				// javascript transitions
+  				if (propertiesToTransitionInJs.length) {
+  					new shared_Ticker({
+  						root: t.root,
+  						duration: options.duration,
+  						easing: camelCase(options.easing || ""),
+  						step: function (pos) {
+  							var prop, i;
+
+  							i = propertiesToTransitionInJs.length;
+  							while (i--) {
+  								prop = propertiesToTransitionInJs[i];
+  								t.node.style[prop.name] = prop.interpolator(pos) + prop.suffix;
+  							}
+  						},
+  						complete: function () {
+  							jsTransitionsComplete = true;
+  							checkComplete();
+  						}
+  					});
+  				} else {
+  					jsTransitionsComplete = true;
+  				}
+
+  				if (!changedProperties.length) {
+  					// We need to cancel the transitionEndHandler, and deal with
+  					// the fact that it will never fire
+  					t.node.removeEventListener(TRANSITIONEND, transitionEndHandler, false);
+  					cssTransitionsComplete = true;
+  					checkComplete();
+  				}
+  			}, 0);
+  		}, options.delay || 0);
+  	};
+  }
+
+  var animateStyle_createTransitions = createTransitions;
+
+  var hidden, vendor, animateStyle_visibility__prefix, animateStyle_visibility__i, visibility;
+
+  if (typeof document !== "undefined") {
+  	hidden = "hidden";
+
+  	visibility = {};
+
+  	if (hidden in document) {
+  		animateStyle_visibility__prefix = "";
+  	} else {
+  		animateStyle_visibility__i = vendors.length;
+  		while (animateStyle_visibility__i--) {
+  			vendor = vendors[animateStyle_visibility__i];
+  			hidden = vendor + "Hidden";
+
+  			if (hidden in document) {
+  				animateStyle_visibility__prefix = vendor;
+  			}
+  		}
+  	}
+
+  	if (animateStyle_visibility__prefix !== undefined) {
+  		document.addEventListener(animateStyle_visibility__prefix + "visibilitychange", onChange);
+
+  		// initialise
+  		onChange();
+  	} else {
+  		// gah, we're in an old browser
+  		if ("onfocusout" in document) {
+  			document.addEventListener("focusout", onHide);
+  			document.addEventListener("focusin", onShow);
+  		} else {
+  			window.addEventListener("pagehide", onHide);
+  			window.addEventListener("blur", onHide);
+
+  			window.addEventListener("pageshow", onShow);
+  			window.addEventListener("focus", onShow);
+  		}
+
+  		visibility.hidden = false; // until proven otherwise. Not ideal but hey
+  	}
+  }
+
+  function onChange() {
+  	visibility.hidden = document[hidden];
+  }
+
+  function onHide() {
+  	visibility.hidden = true;
+  }
+
+  function onShow() {
+  	visibility.hidden = false;
+  }
+
+  var animateStyle_visibility = visibility;
+
+  var animateStyle, _animateStyle__getComputedStyle, resolved;
+
+  if (!isClient) {
+  	animateStyle = null;
+  } else {
+  	_animateStyle__getComputedStyle = window.getComputedStyle || legacy.getComputedStyle;
+
+  	animateStyle = function (style, value, options) {
+  		var _this = this;
+
+  		var to;
+
+  		if (arguments.length === 4) {
+  			throw new Error("t.animateStyle() returns a promise - use .then() instead of passing a callback");
+  		}
+
+  		// Special case - page isn't visible. Don't animate anything, because
+  		// that way you'll never get CSS transitionend events
+  		if (animateStyle_visibility.hidden) {
+  			this.setStyle(style, value);
+  			return resolved || (resolved = utils_Promise.resolve());
+  		}
+
+  		if (typeof style === "string") {
+  			to = {};
+  			to[style] = value;
+  		} else {
+  			to = style;
+
+  			// shuffle arguments
+  			options = value;
+  		}
+
+  		// As of 0.3.9, transition authors should supply an `option` object with
+  		// `duration` and `easing` properties (and optional `delay`), plus a
+  		// callback function that gets called after the animation completes
