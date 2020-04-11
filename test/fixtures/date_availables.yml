@@ -1,0 +1,15 @@
+# Read about fixtures at http://api.rubyonrails.org/classes/ActiveRecord/FixtureSet.html
+
+one:
+  date: 2015-06-19 03:09:43
+  start_time: 2015-06-19 03:09:43
+  finish_time: 2015-06-19 03:09:43
+  description: MyString
+  profile_id: 
+
+two:
+  date: 2015-06-19 03:09:43
+  start_time: 2015-06-19 03:09:43
+  finish_time: 2015-06-19 03:09:43
+  description: MyString
+  profile_id: 
