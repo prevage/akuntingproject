@@ -1,0 +1,63 @@
+
+<table class="table table-striped datatable" cellspacing="0" width="100%">
+    <thead>
+      <tr>
+        <th>LINE</th>
+        <th>CYCLE NAME</th>
+        <th>1</th>
+        <th>2</th>
+        <th>3</th>
+        <th>4</th>
+        <th>5</th>
+        <th>6</th>
+        <th>7</th>
+        <th>8</th>
+      </tr>
+    </thead>
+    <tbody>
+    <% for i in 11..32 %>
+      <tr>
+      		<td><%= @xls.column(1)[i] %></td>
+      		<td><%= @xls.column(2)[i]%></td>
+      		<% if @xls.column(3)[i].nil? %>
+      			<td><%= @xls.column(3)[i] %></td>
+      			<td><%= @xls.column(4)[i] %></td>
+      			<td><%= @xls.column(5)[i] %></td>
+      			<td><%= @xls.column(6)[i] %></td>
+      			<td><%= @xls.column(7)[i] %></td>
+      			<td><%= @xls.column(8)[i] %></td>
+      			<td><%= @xls.column(9)[i] %></td>
+      			<td><%= @xls.column(10)[i] %></td>
+
+      		<% else%>
+      			<td><%= @xls.column(3)[i].split("\n")[0] %><br>
+      				<%= @xls.column(3)[i].split("\n")[2] %>
+      			</td>
+      			<td><%= @xls.column(4)[i].split("\n")[0] %><br>
+      				<%= @xls.column(3)[i].split("\n")[2] %><br>
+      			</td>
+      			<td><%= @xls.column(5)[i].split("\n")[0] %><br>
+      				<%= @xls.column(3)[i].split("\n")[2] %>
+      			</td>
+      			<td><%= @xls.column(6)[i].split("\n")[0] %><br>
+      				<%= @xls.column(3)[i].split("\n")[2] %>
+      			</td>
+      			<td><%= @xls.column(7)[i].split("\n")[0] %><br>
+      				<%= @xls.column(3)[i].split("\n")[2] %>
+      			</td>
+      			<td><%= @xls.column(8)[i].split("\n")[0] %><br>
+      				<%= @xls.column(3)[i].split("\n")[2] %>
+      			</td>
+      			<td><%= @xls.column(9)[i].split("\n")[0] %><br>
+      				<%= @xls.column(3)[i].split("\n")[2] %>
+      			</td>
+      			<td><%= @xls.column(10)[i].split("\n")[0] %><br>
+      				<%= @xls.column(3)[i].split("\n")[2] %>
+      			</td>
+      		<% end %>
+      		
+      </tr>
+      	<% end %>
+     
+    </tbody>
+  </table>
