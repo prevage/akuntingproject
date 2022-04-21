@@ -480,4 +480,311 @@
 
   function logIfDebug() {
   	if (_Ractive.DEBUG) {
-  		log.apply(null, a
+  		log.apply(null, arguments);
+  	}
+  }
+
+  function warn(message) {
+  	for (var _len = arguments.length, args = Array(_len > 1 ? _len - 1 : 0), _key = 1; _key < _len; _key++) {
+  		args[_key - 1] = arguments[_key];
+  	}
+
+  	message = format(message, args);
+  	printWarning(message, args);
+  }
+
+  function warnOnce(message) {
+  	for (var _len = arguments.length, args = Array(_len > 1 ? _len - 1 : 0), _key = 1; _key < _len; _key++) {
+  		args[_key - 1] = arguments[_key];
+  	}
+
+  	message = format(message, args);
+
+  	if (alreadyWarned[message]) {
+  		return;
+  	}
+
+  	alreadyWarned[message] = true;
+  	printWarning(message, args);
+  }
+
+  function warnIfDebug() {
+  	if (_Ractive.DEBUG) {
+  		warn.apply(null, arguments);
+  	}
+  }
+
+  function warnOnceIfDebug() {
+  	if (_Ractive.DEBUG) {
+  		warnOnce.apply(null, arguments);
+  	}
+  }
+
+  // Error messages that are used (or could be) in multiple places
+  var badArguments = "Bad arguments";
+  var noRegistryFunctionReturn = "A function was specified for \"%s\" %s, but no %s was returned";
+  var missingPlugin = function (name, type) {
+    return "Missing \"" + name + "\" " + type + " plugin. You may need to download a plugin via http://docs.ractivejs.org/latest/plugins#" + type + "s";
+  };
+
+  function findInViewHierarchy(registryName, ractive, name) {
+  	var instance = findInstance(registryName, ractive, name);
+  	return instance ? instance[registryName][name] : null;
+  }
+
+  function findInstance(registryName, ractive, name) {
+  	while (ractive) {
+  		if (name in ractive[registryName]) {
+  			return ractive;
+  		}
+
+  		if (ractive.isolated) {
+  			return null;
+  		}
+
+  		ractive = ractive.parent;
+  	}
+  }
+
+  var interpolate = function (from, to, ractive, type) {
+  	if (from === to) {
+  		return snap(to);
+  	}
+
+  	if (type) {
+
+  		var interpol = findInViewHierarchy("interpolators", ractive, type);
+  		if (interpol) {
+  			return interpol(from, to) || snap(to);
+  		}
+
+  		fatal(missingPlugin(type, "interpolator"));
+  	}
+
+  	return static_interpolators.number(from, to) || static_interpolators.array(from, to) || static_interpolators.object(from, to) || snap(to);
+  };
+
+  var shared_interpolate = interpolate;
+
+  function snap(to) {
+  	return function () {
+  		return to;
+  	};
+  }
+
+  var interpolators = {
+  	number: function (from, to) {
+  		var delta;
+
+  		if (!is__isNumeric(from) || !is__isNumeric(to)) {
+  			return null;
+  		}
+
+  		from = +from;
+  		to = +to;
+
+  		delta = to - from;
+
+  		if (!delta) {
+  			return function () {
+  				return from;
+  			};
+  		}
+
+  		return function (t) {
+  			return from + t * delta;
+  		};
+  	},
+
+  	array: function (from, to) {
+  		var intermediate, interpolators, len, i;
+
+  		if (!isArray(from) || !isArray(to)) {
+  			return null;
+  		}
+
+  		intermediate = [];
+  		interpolators = [];
+
+  		i = len = Math.min(from.length, to.length);
+  		while (i--) {
+  			interpolators[i] = shared_interpolate(from[i], to[i]);
+  		}
+
+  		// surplus values - don't interpolate, but don't exclude them either
+  		for (i = len; i < from.length; i += 1) {
+  			intermediate[i] = from[i];
+  		}
+
+  		for (i = len; i < to.length; i += 1) {
+  			intermediate[i] = to[i];
+  		}
+
+  		return function (t) {
+  			var i = len;
+
+  			while (i--) {
+  				intermediate[i] = interpolators[i](t);
+  			}
+
+  			return intermediate;
+  		};
+  	},
+
+  	object: function (from, to) {
+  		var properties, len, interpolators, intermediate, prop;
+
+  		if (!isObject(from) || !isObject(to)) {
+  			return null;
+  		}
+
+  		properties = [];
+  		intermediate = {};
+  		interpolators = {};
+
+  		for (prop in from) {
+  			if (hasOwn.call(from, prop)) {
+  				if (hasOwn.call(to, prop)) {
+  					properties.push(prop);
+  					interpolators[prop] = shared_interpolate(from[prop], to[prop]);
+  				} else {
+  					intermediate[prop] = from[prop];
+  				}
+  			}
+  		}
+
+  		for (prop in to) {
+  			if (hasOwn.call(to, prop) && !hasOwn.call(from, prop)) {
+  				intermediate[prop] = to[prop];
+  			}
+  		}
+
+  		len = properties.length;
+
+  		return function (t) {
+  			var i = len,
+  			    prop;
+
+  			while (i--) {
+  				prop = properties[i];
+
+  				intermediate[prop] = interpolators[prop](t);
+  			}
+
+  			return intermediate;
+  		};
+  	}
+  };
+
+  var static_interpolators = interpolators;
+
+  // This function takes a keypath such as 'foo.bar.baz', and returns
+  // all the variants of that keypath that include a wildcard in place
+  // of a key, such as 'foo.bar.*', 'foo.*.baz', 'foo.*.*' and so on.
+  // These are then checked against the dependants map (ractive.viewmodel.depsMap)
+  // to see if any pattern observers are downstream of one or more of
+  // these wildcard keypaths (e.g. 'foo.bar.*.status')
+  var utils_getPotentialWildcardMatches = getPotentialWildcardMatches;
+
+  var starMaps = {};
+  function getPotentialWildcardMatches(keypath) {
+  	var keys, starMap, mapper, i, result, wildcardKeypath;
+
+  	keys = keypath.split(".");
+  	if (!(starMap = starMaps[keys.length])) {
+  		starMap = getStarMap(keys.length);
+  	}
+
+  	result = [];
+
+  	mapper = function (star, i) {
+  		return star ? "*" : keys[i];
+  	};
+
+  	i = starMap.length;
+  	while (i--) {
+  		wildcardKeypath = starMap[i].map(mapper).join(".");
+
+  		if (!result.hasOwnProperty(wildcardKeypath)) {
+  			result.push(wildcardKeypath);
+  			result[wildcardKeypath] = true;
+  		}
+  	}
+
+  	return result;
+  }
+
+  // This function returns all the possible true/false combinations for
+  // a given number - e.g. for two, the possible combinations are
+  // [ true, true ], [ true, false ], [ false, true ], [ false, false ].
+  // It does so by getting all the binary values between 0 and e.g. 11
+  function getStarMap(num) {
+  	var ones = "",
+  	    max,
+  	    binary,
+  	    starMap,
+  	    mapper,
+  	    i,
+  	    j,
+  	    l,
+  	    map;
+
+  	if (!starMaps[num]) {
+  		starMap = [];
+
+  		while (ones.length < num) {
+  			ones += 1;
+  		}
+
+  		max = parseInt(ones, 2);
+
+  		mapper = function (digit) {
+  			return digit === "1";
+  		};
+
+  		for (i = 0; i <= max; i += 1) {
+  			binary = i.toString(2);
+  			while (binary.length < num) {
+  				binary = "0" + binary;
+  			}
+
+  			map = [];
+  			l = binary.length;
+  			for (j = 0; j < l; j++) {
+  				map.push(mapper(binary[j]));
+  			}
+  			starMap[i] = map;
+  		}
+
+  		starMaps[num] = starMap;
+  	}
+
+  	return starMaps[num];
+  }
+
+  var refPattern = /\[\s*(\*|[0-9]|[1-9][0-9]+)\s*\]/g;
+  var patternPattern = /\*/;
+  var keypathCache = {};
+
+  var Keypath = function (str) {
+  	var keys = str.split(".");
+
+  	this.str = str;
+
+  	if (str[0] === "@") {
+  		this.isSpecial = true;
+  		this.value = decodeKeypath(str);
+  	}
+
+  	this.firstKey = keys[0];
+  	this.lastKey = keys.pop();
+
+  	this.isPattern = patternPattern.test(str);
+
+  	this.parent = str === "" ? null : getKeypath(keys.join("."));
+  	this.isRoot = !str;
+  };
+
+  Keypath.prototype = {
+  	equalsOrStartsWith: function (keypath) {
+  		return keypath === this || this.startsWit
