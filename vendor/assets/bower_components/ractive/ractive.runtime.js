@@ -787,4 +787,266 @@
 
   Keypath.prototype = {
   	equalsOrStartsWith: function (keypath) {
-  		return keypath === this || this.startsWit
+  		return keypath === this || this.startsWith(keypath);
+  	},
+
+  	join: function (str) {
+  		return getKeypath(this.isRoot ? String(str) : this.str + "." + str);
+  	},
+
+  	replace: function (oldKeypath, newKeypath) {
+  		if (this === oldKeypath) {
+  			return newKeypath;
+  		}
+
+  		if (this.startsWith(oldKeypath)) {
+  			return newKeypath === null ? newKeypath : getKeypath(this.str.replace(oldKeypath.str + ".", newKeypath.str + "."));
+  		}
+  	},
+
+  	startsWith: function (keypath) {
+  		if (!keypath) {
+  			// TODO under what circumstances does this happen?
+  			return false;
+  		}
+
+  		return keypath && this.str.substr(0, keypath.str.length + 1) === keypath.str + ".";
+  	},
+
+  	toString: function () {
+  		throw new Error("Bad coercion");
+  	},
+
+  	valueOf: function () {
+  		throw new Error("Bad coercion");
+  	},
+
+  	wildcardMatches: function () {
+  		return this._wildcardMatches || (this._wildcardMatches = utils_getPotentialWildcardMatches(this.str));
+  	}
+  };
+  function assignNewKeypath(target, property, oldKeypath, newKeypath) {
+  	var existingKeypath = target[property];
+
+  	if (existingKeypath && (existingKeypath.equalsOrStartsWith(newKeypath) || !existingKeypath.equalsOrStartsWith(oldKeypath))) {
+  		return;
+  	}
+
+  	target[property] = existingKeypath ? existingKeypath.replace(oldKeypath, newKeypath) : newKeypath;
+  	return true;
+  }
+
+  function decodeKeypath(keypath) {
+  	var value = keypath.slice(2);
+
+  	if (keypath[1] === "i") {
+  		return is__isNumeric(value) ? +value : value;
+  	} else {
+  		return value;
+  	}
+  }
+
+  function getKeypath(str) {
+  	if (str == null) {
+  		return str;
+  	}
+
+  	// TODO it *may* be worth having two versions of this function - one where
+  	// keypathCache inherits from null, and one for IE8. Depends on how
+  	// much of an overhead hasOwnProperty is - probably negligible
+  	if (!keypathCache.hasOwnProperty(str)) {
+  		keypathCache[str] = new Keypath(str);
+  	}
+
+  	return keypathCache[str];
+  }
+
+  function getMatchingKeypaths(ractive, keypath) {
+  	var keys, key, matchingKeypaths;
+
+  	keys = keypath.str.split(".");
+  	matchingKeypaths = [rootKeypath];
+
+  	while (key = keys.shift()) {
+  		if (key === "*") {
+  			// expand to find all valid child keypaths
+  			matchingKeypaths = matchingKeypaths.reduce(expand, []);
+  		} else {
+  			if (matchingKeypaths[0] === rootKeypath) {
+  				// first key
+  				matchingKeypaths[0] = getKeypath(key);
+  			} else {
+  				matchingKeypaths = matchingKeypaths.map(concatenate(key));
+  			}
+  		}
+  	}
+
+  	return matchingKeypaths;
+
+  	function expand(matchingKeypaths, keypath) {
+  		var wrapper, value, keys;
+
+  		if (keypath.isRoot) {
+  			keys = [].concat(Object.keys(ractive.viewmodel.data), Object.keys(ractive.viewmodel.mappings), Object.keys(ractive.viewmodel.computations));
+  		} else {
+  			wrapper = ractive.viewmodel.wrapped[keypath.str];
+  			value = wrapper ? wrapper.get() : ractive.viewmodel.get(keypath);
+
+  			keys = value ? Object.keys(value) : null;
+  		}
+
+  		if (keys) {
+  			keys.forEach(function (key) {
+  				if (key !== "_ractive" || !isArray(value)) {
+  					matchingKeypaths.push(keypath.join(key));
+  				}
+  			});
+  		}
+
+  		return matchingKeypaths;
+  	}
+  }
+
+  function concatenate(key) {
+  	return function (keypath) {
+  		return keypath.join(key);
+  	};
+  }
+  function normalise(ref) {
+  	return ref ? ref.replace(refPattern, ".$1") : "";
+  }
+
+  var rootKeypath = getKeypath("");
+
+  var shared_add = add;
+  var shared_add__errorMessage = "Cannot add to a non-numeric value";
+  function add(root, keypath, d) {
+  	if (typeof keypath !== "string" || !is__isNumeric(d)) {
+  		throw new Error("Bad arguments");
+  	}
+
+  	var value = undefined,
+  	    changes = undefined;
+
+  	if (/\*/.test(keypath)) {
+  		changes = {};
+
+  		getMatchingKeypaths(root, getKeypath(normalise(keypath))).forEach(function (keypath) {
+  			var value = root.viewmodel.get(keypath);
+
+  			if (!is__isNumeric(value)) {
+  				throw new Error(shared_add__errorMessage);
+  			}
+
+  			changes[keypath.str] = value + d;
+  		});
+
+  		return root.set(changes);
+  	}
+
+  	value = root.get(keypath);
+
+  	if (!is__isNumeric(value)) {
+  		throw new Error(shared_add__errorMessage);
+  	}
+
+  	return root.set(keypath, +value + d);
+  }
+
+  var prototype_add = Ractive$add;
+  function Ractive$add(keypath, d) {
+  	return shared_add(this, keypath, d === undefined ? 1 : +d);
+  }
+
+  var requestAnimationFrame;
+
+  // If window doesn't exist, we don't need requestAnimationFrame
+  if (typeof window === "undefined") {
+  	requestAnimationFrame = null;
+  } else {
+  	// https://gist.github.com/paulirish/1579671
+  	(function (vendors, lastTime, window) {
+
+  		var x, setTimeout;
+
+  		if (window.requestAnimationFrame) {
+  			return;
+  		}
+
+  		for (x = 0; x < vendors.length && !window.requestAnimationFrame; ++x) {
+  			window.requestAnimationFrame = window[vendors[x] + "RequestAnimationFrame"];
+  		}
+
+  		if (!window.requestAnimationFrame) {
+  			setTimeout = window.setTimeout;
+
+  			window.requestAnimationFrame = function (callback) {
+  				var currTime, timeToCall, id;
+
+  				currTime = Date.now();
+  				timeToCall = Math.max(0, 16 - (currTime - lastTime));
+  				id = setTimeout(function () {
+  					callback(currTime + timeToCall);
+  				}, timeToCall);
+
+  				lastTime = currTime + timeToCall;
+  				return id;
+  			};
+  		}
+  	})(vendors, 0, window);
+
+  	requestAnimationFrame = window.requestAnimationFrame;
+  }
+
+  var rAF = requestAnimationFrame;
+
+  var getTime;
+
+  if (typeof window !== "undefined" && window.performance && typeof window.performance.now === "function") {
+  	getTime = function () {
+  		return window.performance.now();
+  	};
+  } else {
+  	getTime = function () {
+  		return Date.now();
+  	};
+  }
+
+  var utils_getTime = getTime;
+
+  var deprecations = {
+  	construct: {
+  		deprecated: "beforeInit",
+  		replacement: "onconstruct"
+  	},
+  	render: {
+  		deprecated: "init",
+  		message: "The \"init\" method has been deprecated " + "and will likely be removed in a future release. " + "You can either use the \"oninit\" method which will fire " + "only once prior to, and regardless of, any eventual ractive " + "instance being rendered, or if you need to access the " + "rendered DOM, use \"onrender\" instead. " + "See http://docs.ractivejs.org/latest/migrating for more information."
+  	},
+  	complete: {
+  		deprecated: "complete",
+  		replacement: "oncomplete"
+  	}
+  };
+
+  function Hook(event) {
+  	this.event = event;
+  	this.method = "on" + event;
+  	this.deprecate = deprecations[event];
+  }
+
+  Hook.prototype.fire = function (ractive, arg) {
+  	function call(method) {
+  		if (ractive[method]) {
+  			arg ? ractive[method](arg) : ractive[method]();
+  			return true;
+  		}
+  	}
+
+  	call(this.method);
+
+  	if (!ractive[this.method] && this.deprecate && call(this.deprecate.deprecated)) {
+  		if (this.deprecate.message) {
+  			warnIfDebug(this.deprecate.message);
+  		} else {
+  			warnIfDebug("The method \"%s\" has been deprecated in fav
