@@ -1376,3 +1376,301 @@
   		if (keypath) {
   			createMappingIfNecessary(ractive, keypath.firstKey, fragment);
   		}
+  	}
+
+  	// ...otherwise we need to figure out the keypath based on context
+  	else {
+  		keypath = resolveAmbiguousReference(ractive, getKeypath(ref), fragment);
+  	}
+
+  	return keypath;
+  }
+
+  function resolveAncestorRef(baseContext, ref) {
+  	var contextKeys;
+
+  	// TODO...
+  	if (baseContext != undefined && typeof baseContext !== "string") {
+  		baseContext = baseContext.str;
+  	}
+
+  	// {{.}} means 'current context'
+  	if (ref === ".") return getKeypath(baseContext);
+
+  	contextKeys = baseContext ? baseContext.split(".") : [];
+
+  	// ancestor references (starting "../") go up the tree
+  	if (ref.substr(0, 3) === "../") {
+  		while (ref.substr(0, 3) === "../") {
+  			if (!contextKeys.length) {
+  				throw new Error("Could not resolve reference - too many \"../\" prefixes");
+  			}
+
+  			contextKeys.pop();
+  			ref = ref.substring(3);
+  		}
+
+  		contextKeys.push(ref);
+  		return getKeypath(contextKeys.join("."));
+  	}
+
+  	// not an ancestor reference - must be a restricted reference (prepended with "." or "./")
+  	if (!baseContext) {
+  		return getKeypath(ref.replace(/^\.\/?/, ""));
+  	}
+
+  	return getKeypath(baseContext + ref.replace(/^\.\//, "."));
+  }
+
+  function resolveAmbiguousReference(ractive, ref, fragment, isParentLookup) {
+  	var context, key, parentValue, hasContextChain, parentKeypath;
+
+  	if (ref.isRoot) {
+  		return ref;
+  	}
+
+  	key = ref.firstKey;
+
+  	while (fragment) {
+  		context = fragment.context;
+  		fragment = fragment.parent;
+
+  		if (!context) {
+  			continue;
+  		}
+
+  		hasContextChain = true;
+  		parentValue = ractive.viewmodel.get(context);
+
+  		if (parentValue && (typeof parentValue === "object" || typeof parentValue === "function") && key in parentValue) {
+  			return context.join(ref.str);
+  		}
+  	}
+
+  	// Root/computed/mapped property?
+  	if (isRootProperty(ractive.viewmodel, key)) {
+  		return ref;
+  	}
+
+  	// If this is an inline component, and it's not isolated, we
+  	// can try going up the scope chain
+  	if (ractive.parent && !ractive.isolated) {
+  		hasContextChain = true;
+  		fragment = ractive.component.parentFragment;
+
+  		key = getKeypath(key);
+
+  		if (parentKeypath = resolveAmbiguousReference(ractive.parent, key, fragment, true)) {
+  			// We need to create an inter-component binding
+  			ractive.viewmodel.map(key, {
+  				origin: ractive.parent.viewmodel,
+  				keypath: parentKeypath
+  			});
+
+  			return ref;
+  		}
+  	}
+
+  	// If there's no context chain, and the instance is either a) isolated or
+  	// b) an orphan, then we know that the keypath is identical to the reference
+  	if (!isParentLookup && !hasContextChain) {
+  		// the data object needs to have a property by this name,
+  		// to prevent future failed lookups
+  		ractive.viewmodel.set(ref, undefined);
+  		return ref;
+  	}
+  }
+
+  function createMappingIfNecessary(ractive, key) {
+  	var parentKeypath;
+
+  	if (!ractive.parent || ractive.isolated || isRootProperty(ractive.viewmodel, key)) {
+  		return;
+  	}
+
+  	key = getKeypath(key);
+
+  	if (parentKeypath = resolveAmbiguousReference(ractive.parent, key, ractive.component.parentFragment, true)) {
+  		ractive.viewmodel.map(key, {
+  			origin: ractive.parent.viewmodel,
+  			keypath: parentKeypath
+  		});
+  	}
+  }
+
+  function isRootProperty(viewmodel, key) {
+  	// special case for reference to root
+  	return key === "" || key in viewmodel.data || key in viewmodel.computations || key in viewmodel.mappings;
+  }
+
+  function teardown(x) {
+    x.teardown();
+  }
+
+  function methodCallers__unbind(x) {
+    x.unbind();
+  }
+
+  function methodCallers__unrender(x) {
+    x.unrender();
+  }
+
+  function cancel(x) {
+    x.cancel();
+  }
+
+  var TransitionManager = function (callback, parent) {
+  	this.callback = callback;
+  	this.parent = parent;
+
+  	this.intros = [];
+  	this.outros = [];
+
+  	this.children = [];
+  	this.totalChildren = this.outroChildren = 0;
+
+  	this.detachQueue = [];
+  	this.decoratorQueue = [];
+  	this.outrosComplete = false;
+
+  	if (parent) {
+  		parent.addChild(this);
+  	}
+  };
+
+  TransitionManager.prototype = {
+  	addChild: function (child) {
+  		this.children.push(child);
+
+  		this.totalChildren += 1;
+  		this.outroChildren += 1;
+  	},
+
+  	decrementOutros: function () {
+  		this.outroChildren -= 1;
+  		check(this);
+  	},
+
+  	decrementTotal: function () {
+  		this.totalChildren -= 1;
+  		check(this);
+  	},
+
+  	add: function (transition) {
+  		var list = transition.isIntro ? this.intros : this.outros;
+  		list.push(transition);
+  	},
+
+  	addDecorator: function (decorator) {
+  		this.decoratorQueue.push(decorator);
+  	},
+
+  	remove: function (transition) {
+  		var list = transition.isIntro ? this.intros : this.outros;
+  		removeFromArray(list, transition);
+  		check(this);
+  	},
+
+  	init: function () {
+  		this.ready = true;
+  		check(this);
+  	},
+
+  	detachNodes: function () {
+  		this.decoratorQueue.forEach(teardown);
+  		this.detachQueue.forEach(detach);
+  		this.children.forEach(detachNodes);
+  	}
+  };
+
+  function detach(element) {
+  	element.detach();
+  }
+
+  function detachNodes(tm) {
+  	tm.detachNodes();
+  }
+
+  function check(tm) {
+  	if (!tm.ready || tm.outros.length || tm.outroChildren) return;
+
+  	// If all outros are complete, and we haven't already done this,
+  	// we notify the parent if there is one, otherwise
+  	// start detaching nodes
+  	if (!tm.outrosComplete) {
+  		if (tm.parent) {
+  			tm.parent.decrementOutros(tm);
+  		} else {
+  			tm.detachNodes();
+  		}
+
+  		tm.outrosComplete = true;
+  	}
+
+  	// Once everything is done, we can notify parent transition
+  	// manager and call the callback
+  	if (!tm.intros.length && !tm.totalChildren) {
+  		if (typeof tm.callback === "function") {
+  			tm.callback();
+  		}
+
+  		if (tm.parent) {
+  			tm.parent.decrementTotal();
+  		}
+  	}
+  }
+
+  var global_TransitionManager = TransitionManager;
+
+  var batch,
+      runloop,
+      unresolved = [],
+      changeHook = new hooks_Hook("change");
+
+  runloop = {
+  	start: function (instance, returnPromise) {
+  		var promise, fulfilPromise;
+
+  		if (returnPromise) {
+  			promise = new utils_Promise(function (f) {
+  				return fulfilPromise = f;
+  			});
+  		}
+
+  		batch = {
+  			previousBatch: batch,
+  			transitionManager: new global_TransitionManager(fulfilPromise, batch && batch.transitionManager),
+  			views: [],
+  			tasks: [],
+  			ractives: [],
+  			instance: instance
+  		};
+
+  		if (instance) {
+  			batch.ractives.push(instance);
+  		}
+
+  		return promise;
+  	},
+
+  	end: function () {
+  		flushChanges();
+
+  		batch.transitionManager.init();
+  		if (!batch.previousBatch && !!batch.instance) batch.instance.viewmodel.changes = [];
+  		batch = batch.previousBatch;
+  	},
+
+  	addRactive: function (ractive) {
+  		if (batch) {
+  			addToArray(batch.ractives, ractive);
+  		}
+  	},
+
+  	registerTransition: function (transition) {
+  		transition._manager = batch.transitionManager;
+  		batch.transitionManager.add(transition);
+  	},
+
+  	registerDecorator: function (decorator) {
+  		batch.tr
