@@ -1975,4 +1975,291 @@
   				}
 
   				options.complete = complete ? collectValue : noop;
-  				animations.push
+  				animations.push(animate(this, k, keypath[k], options));
+  			}
+  		}
+
+  		// Create a dummy animation, to facilitate step/complete
+  		// callbacks, and Promise fulfilment
+  		dummyOptions = { easing: easing, duration: duration };
+
+  		if (step) {
+  			dummyOptions.step = function (t) {
+  				return step(t, currentValues);
+  			};
+  		}
+
+  		if (complete) {
+  			promise.then(function (t) {
+  				return complete(t, currentValues);
+  			});
+  		}
+
+  		dummyOptions.complete = fulfilPromise;
+
+  		dummy = animate(this, null, null, dummyOptions);
+  		animations.push(dummy);
+
+  		promise.stop = function () {
+  			var animation;
+
+  			while (animation = animations.pop()) {
+  				animation.stop();
+  			}
+
+  			if (dummy) {
+  				dummy.stop();
+  			}
+  		};
+
+  		return promise;
+  	}
+
+  	// animate a single keypath
+  	options = options || {};
+
+  	if (options.complete) {
+  		promise.then(options.complete);
+  	}
+
+  	options.complete = fulfilPromise;
+  	animation = animate(this, keypath, to, options);
+
+  	promise.stop = function () {
+  		return animation.stop();
+  	};
+  	return promise;
+  }
+
+  function animate(root, keypath, to, options) {
+  	var easing, duration, animation, from;
+
+  	if (keypath) {
+  		keypath = getKeypath(normalise(keypath));
+  	}
+
+  	if (keypath !== null) {
+  		from = root.viewmodel.get(keypath);
+  	}
+
+  	// cancel any existing animation
+  	// TODO what about upstream/downstream keypaths?
+  	shared_animations.abort(keypath, root);
+
+  	// don't bother animating values that stay the same
+  	if (isEqual(from, to)) {
+  		if (options.complete) {
+  			options.complete(options.to);
+  		}
+
+  		return noAnimation;
+  	}
+
+  	// easing function
+  	if (options.easing) {
+  		if (typeof options.easing === "function") {
+  			easing = options.easing;
+  		} else {
+  			easing = root.easing[options.easing];
+  		}
+
+  		if (typeof easing !== "function") {
+  			easing = null;
+  		}
+  	}
+
+  	// duration
+  	duration = options.duration === undefined ? 400 : options.duration;
+
+  	// TODO store keys, use an internal set method
+  	animation = new animate_Animation({
+  		keypath: keypath,
+  		from: from,
+  		to: to,
+  		root: root,
+  		duration: duration,
+  		easing: easing,
+  		interpolator: options.interpolator,
+
+  		// TODO wrap callbacks if necessary, to use instance as context
+  		step: options.step,
+  		complete: options.complete
+  	});
+
+  	shared_animations.add(animation);
+  	root._animations.push(animation);
+
+  	return animation;
+  }
+
+  var prototype_detach = Ractive$detach;
+  var prototype_detach__detachHook = new hooks_Hook("detach");
+  function Ractive$detach() {
+  	if (this.detached) {
+  		return this.detached;
+  	}
+
+  	if (this.el) {
+  		removeFromArray(this.el.__ractive_instances__, this);
+  	}
+  	this.detached = this.fragment.detach();
+  	prototype_detach__detachHook.fire(this);
+  	return this.detached;
+  }
+
+  var prototype_find = Ractive$find;
+
+  function Ractive$find(selector) {
+  	if (!this.el) {
+  		return null;
+  	}
+
+  	return this.fragment.find(selector);
+  }
+
+  var test = Query$test;
+  function Query$test(item, noDirty) {
+  	var itemMatches;
+
+  	if (this._isComponentQuery) {
+  		itemMatches = !this.selector || item.name === this.selector;
+  	} else {
+  		itemMatches = item.node ? matches(item.node, this.selector) : null;
+  	}
+
+  	if (itemMatches) {
+  		this.push(item.node || item.instance);
+
+  		if (!noDirty) {
+  			this._makeDirty();
+  		}
+
+  		return true;
+  	}
+  }
+
+  var makeQuery_cancel = function () {
+  	var liveQueries, selector, index;
+
+  	liveQueries = this._root[this._isComponentQuery ? "liveComponentQueries" : "liveQueries"];
+  	selector = this.selector;
+
+  	index = liveQueries.indexOf(selector);
+
+  	if (index !== -1) {
+  		liveQueries.splice(index, 1);
+  		liveQueries[selector] = null;
+  	}
+  };
+
+  var sortByItemPosition = function (a, b) {
+  	var ancestryA, ancestryB, oldestA, oldestB, mutualAncestor, indexA, indexB, fragments, fragmentA, fragmentB;
+
+  	ancestryA = getAncestry(a.component || a._ractive.proxy);
+  	ancestryB = getAncestry(b.component || b._ractive.proxy);
+
+  	oldestA = lastItem(ancestryA);
+  	oldestB = lastItem(ancestryB);
+
+  	// remove items from the end of both ancestries as long as they are identical
+  	// - the final one removed is the closest mutual ancestor
+  	while (oldestA && oldestA === oldestB) {
+  		ancestryA.pop();
+  		ancestryB.pop();
+
+  		mutualAncestor = oldestA;
+
+  		oldestA = lastItem(ancestryA);
+  		oldestB = lastItem(ancestryB);
+  	}
+
+  	// now that we have the mutual ancestor, we can find which is earliest
+  	oldestA = oldestA.component || oldestA;
+  	oldestB = oldestB.component || oldestB;
+
+  	fragmentA = oldestA.parentFragment;
+  	fragmentB = oldestB.parentFragment;
+
+  	// if both items share a parent fragment, our job is easy
+  	if (fragmentA === fragmentB) {
+  		indexA = fragmentA.items.indexOf(oldestA);
+  		indexB = fragmentB.items.indexOf(oldestB);
+
+  		// if it's the same index, it means one contains the other,
+  		// so we see which has the longest ancestry
+  		return indexA - indexB || ancestryA.length - ancestryB.length;
+  	}
+
+  	// if mutual ancestor is a section, we first test to see which section
+  	// fragment comes first
+  	if (fragments = mutualAncestor.fragments) {
+  		indexA = fragments.indexOf(fragmentA);
+  		indexB = fragments.indexOf(fragmentB);
+
+  		return indexA - indexB || ancestryA.length - ancestryB.length;
+  	}
+
+  	throw new Error("An unexpected condition was met while comparing the position of two components. Please file an issue at https://github.com/RactiveJS/Ractive/issues - thanks!");
+  };
+
+  function getParent(item) {
+  	var parentFragment;
+
+  	if (parentFragment = item.parentFragment) {
+  		return parentFragment.owner;
+  	}
+
+  	if (item.component && (parentFragment = item.component.parentFragment)) {
+  		return parentFragment.owner;
+  	}
+  }
+
+  function getAncestry(item) {
+  	var ancestry, ancestor;
+
+  	ancestry = [item];
+
+  	ancestor = getParent(item);
+
+  	while (ancestor) {
+  		ancestry.push(ancestor);
+  		ancestor = getParent(ancestor);
+  	}
+
+  	return ancestry;
+  }
+
+  var sortByDocumentPosition = function (node, otherNode) {
+  	var bitmask;
+
+  	if (node.compareDocumentPosition) {
+  		bitmask = node.compareDocumentPosition(otherNode);
+  		return bitmask & 2 ? 1 : -1;
+  	}
+
+  	// In old IE, we can piggy back on the mechanism for
+  	// comparing component positions
+  	return sortByItemPosition(node, otherNode);
+  };
+
+  var sort = function () {
+  	this.sort(this._isComponentQuery ? sortByItemPosition : sortByDocumentPosition);
+  	this._dirty = false;
+  };
+
+  var makeQuery_dirty = function () {
+  	var _this = this;
+
+  	if (!this._dirty) {
+  		this._dirty = true;
+
+  		// Once the DOM has been updated, ensure the query
+  		// is correctly ordered
+  		global_runloop.scheduleTask(function () {
+  			_this._sort();
+  		});
+  	}
+  };
+
+  var remove = function (nodeOrComponent) {
+  	var index = this.indexOf(this._isComponentQuery ? node
