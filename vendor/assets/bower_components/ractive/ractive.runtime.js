@@ -1673,4 +1673,306 @@
   	},
 
   	registerDecorator: function (decorator) {
-  		batch.tr
+  		batch.transitionManager.addDecorator(decorator);
+  	},
+
+  	addView: function (view) {
+  		batch.views.push(view);
+  	},
+
+  	addUnresolved: function (thing) {
+  		unresolved.push(thing);
+  	},
+
+  	removeUnresolved: function (thing) {
+  		removeFromArray(unresolved, thing);
+  	},
+
+  	// synchronise node detachments with transition ends
+  	detachWhenReady: function (thing) {
+  		batch.transitionManager.detachQueue.push(thing);
+  	},
+
+  	scheduleTask: function (task, postRender) {
+  		var _batch;
+
+  		if (!batch) {
+  			task();
+  		} else {
+  			_batch = batch;
+  			while (postRender && _batch.previousBatch) {
+  				// this can't happen until the DOM has been fully updated
+  				// otherwise in some situations (with components inside elements)
+  				// transitions and decorators will initialise prematurely
+  				_batch = _batch.previousBatch;
+  			}
+
+  			_batch.tasks.push(task);
+  		}
+  	}
+  };
+
+  var global_runloop = runloop;
+
+  function flushChanges() {
+  	var i, thing, changeHash;
+
+  	while (batch.ractives.length) {
+  		thing = batch.ractives.pop();
+  		changeHash = thing.viewmodel.applyChanges();
+
+  		if (changeHash) {
+  			changeHook.fire(thing, changeHash);
+  		}
+  	}
+
+  	attemptKeypathResolution();
+
+  	// Now that changes have been fully propagated, we can update the DOM
+  	// and complete other tasks
+  	for (i = 0; i < batch.views.length; i += 1) {
+  		batch.views[i].update();
+  	}
+  	batch.views.length = 0;
+
+  	for (i = 0; i < batch.tasks.length; i += 1) {
+  		batch.tasks[i]();
+  	}
+  	batch.tasks.length = 0;
+
+  	// If updating the view caused some model blowback - e.g. a triple
+  	// containing <option> elements caused the binding on the <select>
+  	// to update - then we start over
+  	if (batch.ractives.length) return flushChanges();
+  }
+
+  function attemptKeypathResolution() {
+  	var i, item, keypath, resolved;
+
+  	i = unresolved.length;
+
+  	// see if we can resolve any unresolved references
+  	while (i--) {
+  		item = unresolved[i];
+
+  		if (item.keypath) {
+  			// it resolved some other way. TODO how? two-way binding? Seems
+  			// weird that we'd still end up here
+  			unresolved.splice(i, 1);
+  			continue; // avoid removing the wrong thing should the next condition be true
+  		}
+
+  		if (keypath = shared_resolveRef(item.root, item.ref, item.parentFragment)) {
+  			(resolved || (resolved = [])).push({
+  				item: item,
+  				keypath: keypath
+  			});
+
+  			unresolved.splice(i, 1);
+  		}
+  	}
+
+  	if (resolved) {
+  		resolved.forEach(global_runloop__resolve);
+  	}
+  }
+
+  function global_runloop__resolve(resolved) {
+  	resolved.item.resolve(resolved.keypath);
+  }
+
+  var queue = [];
+
+  var animations = {
+  	tick: function () {
+  		var i, animation, now;
+
+  		now = utils_getTime();
+
+  		global_runloop.start();
+
+  		for (i = 0; i < queue.length; i += 1) {
+  			animation = queue[i];
+
+  			if (!animation.tick(now)) {
+  				// animation is complete, remove it from the stack, and decrement i so we don't miss one
+  				queue.splice(i--, 1);
+  			}
+  		}
+
+  		global_runloop.end();
+
+  		if (queue.length) {
+  			rAF(animations.tick);
+  		} else {
+  			animations.running = false;
+  		}
+  	},
+
+  	add: function (animation) {
+  		queue.push(animation);
+
+  		if (!animations.running) {
+  			animations.running = true;
+  			rAF(animations.tick);
+  		}
+  	},
+
+  	// TODO optimise this
+  	abort: function (keypath, root) {
+  		var i = queue.length,
+  		    animation;
+
+  		while (i--) {
+  			animation = queue[i];
+
+  			if (animation.root === root && animation.keypath === keypath) {
+  				animation.stop();
+  			}
+  		}
+  	}
+  };
+
+  var shared_animations = animations;
+
+  var Animation = function (options) {
+  	var key;
+
+  	this.startTime = Date.now();
+
+  	// from and to
+  	for (key in options) {
+  		if (options.hasOwnProperty(key)) {
+  			this[key] = options[key];
+  		}
+  	}
+
+  	this.interpolator = shared_interpolate(this.from, this.to, this.root, this.interpolator);
+  	this.running = true;
+
+  	this.tick();
+  };
+
+  Animation.prototype = {
+  	tick: function () {
+  		var elapsed, t, value, timeNow, index, keypath;
+
+  		keypath = this.keypath;
+
+  		if (this.running) {
+  			timeNow = Date.now();
+  			elapsed = timeNow - this.startTime;
+
+  			if (elapsed >= this.duration) {
+  				if (keypath !== null) {
+  					global_runloop.start(this.root);
+  					this.root.viewmodel.set(keypath, this.to);
+  					global_runloop.end();
+  				}
+
+  				if (this.step) {
+  					this.step(1, this.to);
+  				}
+
+  				this.complete(this.to);
+
+  				index = this.root._animations.indexOf(this);
+
+  				// TODO investigate why this happens
+  				if (index === -1) {
+  					warnIfDebug("Animation was not found");
+  				}
+
+  				this.root._animations.splice(index, 1);
+
+  				this.running = false;
+  				return false; // remove from the stack
+  			}
+
+  			t = this.easing ? this.easing(elapsed / this.duration) : elapsed / this.duration;
+
+  			if (keypath !== null) {
+  				value = this.interpolator(t);
+  				global_runloop.start(this.root);
+  				this.root.viewmodel.set(keypath, value);
+  				global_runloop.end();
+  			}
+
+  			if (this.step) {
+  				this.step(t, value);
+  			}
+
+  			return true; // keep in the stack
+  		}
+
+  		return false; // remove from the stack
+  	},
+
+  	stop: function () {
+  		var index;
+
+  		this.running = false;
+
+  		index = this.root._animations.indexOf(this);
+
+  		// TODO investigate why this happens
+  		if (index === -1) {
+  			warnIfDebug("Animation was not found");
+  		}
+
+  		this.root._animations.splice(index, 1);
+  	}
+  };
+
+  var animate_Animation = Animation;
+
+  var prototype_animate = Ractive$animate;
+
+  var noAnimation = { stop: noop };
+  function Ractive$animate(keypath, to, options) {
+  	var promise, fulfilPromise, k, animation, animations, easing, duration, step, complete, makeValueCollector, currentValues, collectValue, dummy, dummyOptions;
+
+  	promise = new utils_Promise(function (fulfil) {
+  		return fulfilPromise = fulfil;
+  	});
+
+  	// animate multiple keypaths
+  	if (typeof keypath === "object") {
+  		options = to || {};
+  		easing = options.easing;
+  		duration = options.duration;
+
+  		animations = [];
+
+  		// we don't want to pass the `step` and `complete` handlers, as they will
+  		// run for each animation! So instead we'll store the handlers and create
+  		// our own...
+  		step = options.step;
+  		complete = options.complete;
+
+  		if (step || complete) {
+  			currentValues = {};
+
+  			options.step = null;
+  			options.complete = null;
+
+  			makeValueCollector = function (keypath) {
+  				return function (t, value) {
+  					currentValues[keypath] = value;
+  				};
+  			};
+  		}
+
+  		for (k in keypath) {
+  			if (keypath.hasOwnProperty(k)) {
+  				if (step || complete) {
+  					collectValue = makeValueCollector(k);
+  					options = { easing: easing, duration: duration };
+
+  					if (step) {
+  						options.step = collectValue;
+  					}
+  				}
+
+  				options.complete = complete ? collectValue : noop;
+  				animations.push
