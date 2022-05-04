@@ -2262,4 +2262,277 @@
   };
 
   var remove = function (nodeOrComponent) {
-  	var index = this.indexOf(this._isComponentQuery ? node
+  	var index = this.indexOf(this._isComponentQuery ? nodeOrComponent.instance : nodeOrComponent);
+
+  	if (index !== -1) {
+  		this.splice(index, 1);
+  	}
+  };
+
+  var _makeQuery = makeQuery;
+  function makeQuery(ractive, selector, live, isComponentQuery) {
+  	var query = [];
+
+  	defineProperties(query, {
+  		selector: { value: selector },
+  		live: { value: live },
+
+  		_isComponentQuery: { value: isComponentQuery },
+  		_test: { value: test }
+  	});
+
+  	if (!live) {
+  		return query;
+  	}
+
+  	defineProperties(query, {
+  		cancel: { value: makeQuery_cancel },
+
+  		_root: { value: ractive },
+  		_sort: { value: sort },
+  		_makeDirty: { value: makeQuery_dirty },
+  		_remove: { value: remove },
+
+  		_dirty: { value: false, writable: true }
+  	});
+
+  	return query;
+  }
+
+  var prototype_findAll = Ractive$findAll;
+  function Ractive$findAll(selector, options) {
+  	var liveQueries, query;
+
+  	if (!this.el) {
+  		return [];
+  	}
+
+  	options = options || {};
+  	liveQueries = this._liveQueries;
+
+  	// Shortcut: if we're maintaining a live query with this
+  	// selector, we don't need to traverse the parallel DOM
+  	if (query = liveQueries[selector]) {
+
+  		// Either return the exact same query, or (if not live) a snapshot
+  		return options && options.live ? query : query.slice();
+  	}
+
+  	query = _makeQuery(this, selector, !!options.live, false);
+
+  	// Add this to the list of live queries Ractive needs to maintain,
+  	// if applicable
+  	if (query.live) {
+  		liveQueries.push(selector);
+  		liveQueries["_" + selector] = query;
+  	}
+
+  	this.fragment.findAll(selector, query);
+  	return query;
+  }
+
+  var prototype_findAllComponents = Ractive$findAllComponents;
+  function Ractive$findAllComponents(selector, options) {
+  	var liveQueries, query;
+
+  	options = options || {};
+  	liveQueries = this._liveComponentQueries;
+
+  	// Shortcut: if we're maintaining a live query with this
+  	// selector, we don't need to traverse the parallel DOM
+  	if (query = liveQueries[selector]) {
+
+  		// Either return the exact same query, or (if not live) a snapshot
+  		return options && options.live ? query : query.slice();
+  	}
+
+  	query = _makeQuery(this, selector, !!options.live, true);
+
+  	// Add this to the list of live queries Ractive needs to maintain,
+  	// if applicable
+  	if (query.live) {
+  		liveQueries.push(selector);
+  		liveQueries["_" + selector] = query;
+  	}
+
+  	this.fragment.findAllComponents(selector, query);
+  	return query;
+  }
+
+  var prototype_findComponent = Ractive$findComponent;
+
+  function Ractive$findComponent(selector) {
+  	return this.fragment.findComponent(selector);
+  }
+
+  var findContainer = Ractive$findContainer;
+
+  function Ractive$findContainer(selector) {
+  	if (this.container) {
+  		if (this.container.component && this.container.component.name === selector) {
+  			return this.container;
+  		} else {
+  			return this.container.findContainer(selector);
+  		}
+  	}
+
+  	return null;
+  }
+
+  var findParent = Ractive$findParent;
+
+  function Ractive$findParent(selector) {
+
+  	if (this.parent) {
+  		if (this.parent.component && this.parent.component.name === selector) {
+  			return this.parent;
+  		} else {
+  			return this.parent.findParent(selector);
+  		}
+  	}
+
+  	return null;
+  }
+
+  var eventStack = {
+  	enqueue: function (ractive, event) {
+  		if (ractive.event) {
+  			ractive._eventQueue = ractive._eventQueue || [];
+  			ractive._eventQueue.push(ractive.event);
+  		}
+  		ractive.event = event;
+  	},
+  	dequeue: function (ractive) {
+  		if (ractive._eventQueue && ractive._eventQueue.length) {
+  			ractive.event = ractive._eventQueue.pop();
+  		} else {
+  			delete ractive.event;
+  		}
+  	}
+  };
+
+  var shared_eventStack = eventStack;
+
+  var shared_fireEvent = fireEvent;
+
+  function fireEvent(ractive, eventName) {
+  	var options = arguments[2] === undefined ? {} : arguments[2];
+
+  	if (!eventName) {
+  		return;
+  	}
+
+  	if (!options.event) {
+  		options.event = {
+  			name: eventName,
+  			// until event not included as argument default
+  			_noArg: true
+  		};
+  	} else {
+  		options.event.name = eventName;
+  	}
+
+  	var eventNames = getKeypath(eventName).wildcardMatches();
+  	fireEventAs(ractive, eventNames, options.event, options.args, true);
+  }
+
+  function fireEventAs(ractive, eventNames, event, args) {
+  	var initialFire = arguments[4] === undefined ? false : arguments[4];
+
+  	var subscribers,
+  	    i,
+  	    bubble = true;
+
+  	shared_eventStack.enqueue(ractive, event);
+
+  	for (i = eventNames.length; i >= 0; i--) {
+  		subscribers = ractive._subs[eventNames[i]];
+
+  		if (subscribers) {
+  			bubble = notifySubscribers(ractive, subscribers, event, args) && bubble;
+  		}
+  	}
+
+  	shared_eventStack.dequeue(ractive);
+
+  	if (ractive.parent && bubble) {
+
+  		if (initialFire && ractive.component) {
+  			var fullName = ractive.component.name + "." + eventNames[eventNames.length - 1];
+  			eventNames = getKeypath(fullName).wildcardMatches();
+
+  			if (event) {
+  				event.component = ractive;
+  			}
+  		}
+
+  		fireEventAs(ractive.parent, eventNames, event, args);
+  	}
+  }
+
+  function notifySubscribers(ractive, subscribers, event, args) {
+  	var originalEvent = null,
+  	    stopEvent = false;
+
+  	if (event && !event._noArg) {
+  		args = [event].concat(args);
+  	}
+
+  	// subscribers can be modified inflight, e.g. "once" functionality
+  	// so we need to copy to make sure everyone gets called
+  	subscribers = subscribers.slice();
+
+  	for (var i = 0, len = subscribers.length; i < len; i += 1) {
+  		if (subscribers[i].apply(ractive, args) === false) {
+  			stopEvent = true;
+  		}
+  	}
+
+  	if (event && !event._noArg && stopEvent && (originalEvent = event.original)) {
+  		originalEvent.preventDefault && originalEvent.preventDefault();
+  		originalEvent.stopPropagation && originalEvent.stopPropagation();
+  	}
+
+  	return !stopEvent;
+  }
+
+  var prototype_fire = Ractive$fire;
+  function Ractive$fire(eventName) {
+
+  	var options = {
+  		args: Array.prototype.slice.call(arguments, 1)
+  	};
+
+  	shared_fireEvent(this, eventName, options);
+  }
+
+  var prototype_get = Ractive$get;
+  var options = {
+  	capture: true, // top-level calls should be intercepted
+  	noUnwrap: true, // wrapped values should NOT be unwrapped
+  	fullRootGet: true // root get should return mappings
+  };
+  function Ractive$get(keypath) {
+  	var value;
+
+  	keypath = getKeypath(normalise(keypath));
+  	value = this.viewmodel.get(keypath, options);
+
+  	// Create inter-component binding, if necessary
+  	if (value === undefined && this.parent && !this.isolated) {
+  		if (shared_resolveRef(this, keypath.str, this.component.parentFragment)) {
+  			// creates binding as side-effect, if appropriate
+  			value = this.viewmodel.get(keypath);
+  		}
+  	}
+
+  	return value;
+  }
+
+  var insert = Ractive$insert;
+
+  var insertHook = new hooks_Hook("insert");
+  function Ractive$insert(target, anchor) {
+  	if (!this.fragment.rendered) {
+  		// TODO create, and link to, documentation explaining this
+  		th
