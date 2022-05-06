@@ -2535,4 +2535,287 @@
   function Ractive$insert(target, anchor) {
   	if (!this.fragment.rendered) {
   		// TODO create, and link to, documentation explaining this
-  		th
+  		throw new Error("The API has changed - you must call `ractive.render(target[, anchor])` to render your Ractive instance. Once rendered you can use `ractive.insert()`.");
+  	}
+
+  	target = getElement(target);
+  	anchor = getElement(anchor) || null;
+
+  	if (!target) {
+  		throw new Error("You must specify a valid target to insert into");
+  	}
+
+  	target.insertBefore(this.detach(), anchor);
+  	this.el = target;
+
+  	(target.__ractive_instances__ || (target.__ractive_instances__ = [])).push(this);
+  	this.detached = null;
+
+  	fireInsertHook(this);
+  }
+
+  function fireInsertHook(ractive) {
+  	insertHook.fire(ractive);
+
+  	ractive.findAllComponents("*").forEach(function (child) {
+  		fireInsertHook(child.instance);
+  	});
+  }
+
+  var prototype_merge = Ractive$merge;
+  function Ractive$merge(keypath, array, options) {
+  	var currentArray, promise;
+
+  	keypath = getKeypath(normalise(keypath));
+  	currentArray = this.viewmodel.get(keypath);
+
+  	// If either the existing value or the new value isn't an
+  	// array, just do a regular set
+  	if (!isArray(currentArray) || !isArray(array)) {
+  		return this.set(keypath, array, options && options.complete);
+  	}
+
+  	// Manage transitions
+  	promise = global_runloop.start(this, true);
+  	this.viewmodel.merge(keypath, currentArray, array, options);
+  	global_runloop.end();
+
+  	return promise;
+  }
+
+  var Observer = function (ractive, keypath, callback, options) {
+  	this.root = ractive;
+  	this.keypath = keypath;
+  	this.callback = callback;
+  	this.defer = options.defer;
+
+  	// default to root as context, but allow it to be overridden
+  	this.context = options && options.context ? options.context : ractive;
+  };
+
+  Observer.prototype = {
+  	init: function (immediate) {
+  		this.value = this.root.get(this.keypath.str);
+
+  		if (immediate !== false) {
+  			this.update();
+  		} else {
+  			this.oldValue = this.value;
+  		}
+  	},
+
+  	setValue: function (value) {
+  		var _this = this;
+
+  		if (!isEqual(value, this.value)) {
+  			this.value = value;
+
+  			if (this.defer && this.ready) {
+  				global_runloop.scheduleTask(function () {
+  					return _this.update();
+  				});
+  			} else {
+  				this.update();
+  			}
+  		}
+  	},
+
+  	update: function () {
+  		// Prevent infinite loops
+  		if (this.updating) {
+  			return;
+  		}
+
+  		this.updating = true;
+
+  		this.callback.call(this.context, this.value, this.oldValue, this.keypath.str);
+  		this.oldValue = this.value;
+
+  		this.updating = false;
+  	}
+  };
+
+  var observe_Observer = Observer;
+
+  var observe_getPattern = getPattern;
+  function getPattern(ractive, pattern) {
+  	var matchingKeypaths, values;
+
+  	matchingKeypaths = getMatchingKeypaths(ractive, pattern);
+
+  	values = {};
+  	matchingKeypaths.forEach(function (keypath) {
+  		values[keypath.str] = ractive.get(keypath.str);
+  	});
+
+  	return values;
+  }
+
+  var PatternObserver,
+      slice = Array.prototype.slice;
+
+  PatternObserver = function (ractive, keypath, callback, options) {
+  	this.root = ractive;
+
+  	this.callback = callback;
+  	this.defer = options.defer;
+
+  	this.keypath = keypath;
+  	this.regex = new RegExp("^" + keypath.str.replace(/\./g, "\\.").replace(/\*/g, "([^\\.]+)") + "$");
+  	this.values = {};
+
+  	if (this.defer) {
+  		this.proxies = [];
+  	}
+
+  	// default to root as context, but allow it to be overridden
+  	this.context = options && options.context ? options.context : ractive;
+  };
+
+  PatternObserver.prototype = {
+  	init: function (immediate) {
+  		var values, keypath;
+
+  		values = observe_getPattern(this.root, this.keypath);
+
+  		if (immediate !== false) {
+  			for (keypath in values) {
+  				if (values.hasOwnProperty(keypath)) {
+  					this.update(getKeypath(keypath));
+  				}
+  			}
+  		} else {
+  			this.values = values;
+  		}
+  	},
+
+  	update: function (keypath) {
+  		var _this = this;
+
+  		var values;
+
+  		if (keypath.isPattern) {
+  			values = observe_getPattern(this.root, keypath);
+
+  			for (keypath in values) {
+  				if (values.hasOwnProperty(keypath)) {
+  					this.update(getKeypath(keypath));
+  				}
+  			}
+
+  			return;
+  		}
+
+  		// special case - array mutation should not trigger `array.*`
+  		// pattern observer with `array.length`
+  		if (this.root.viewmodel.implicitChanges[keypath.str]) {
+  			return;
+  		}
+
+  		if (this.defer && this.ready) {
+  			global_runloop.scheduleTask(function () {
+  				return _this.getProxy(keypath).update();
+  			});
+  			return;
+  		}
+
+  		this.reallyUpdate(keypath);
+  	},
+
+  	reallyUpdate: function (keypath) {
+  		var keypathStr, value, keys, args;
+
+  		keypathStr = keypath.str;
+  		value = this.root.viewmodel.get(keypath);
+
+  		// Prevent infinite loops
+  		if (this.updating) {
+  			this.values[keypathStr] = value;
+  			return;
+  		}
+
+  		this.updating = true;
+
+  		if (!isEqual(value, this.values[keypathStr]) || !this.ready) {
+  			keys = slice.call(this.regex.exec(keypathStr), 1);
+  			args = [value, this.values[keypathStr], keypathStr].concat(keys);
+
+  			this.values[keypathStr] = value;
+  			this.callback.apply(this.context, args);
+  		}
+
+  		this.updating = false;
+  	},
+
+  	getProxy: function (keypath) {
+  		var _this = this;
+
+  		if (!this.proxies[keypath.str]) {
+  			this.proxies[keypath.str] = {
+  				update: function () {
+  					return _this.reallyUpdate(keypath);
+  				}
+  			};
+  		}
+
+  		return this.proxies[keypath.str];
+  	}
+  };
+
+  var observe_PatternObserver = PatternObserver;
+
+  var observe_getObserverFacade = getObserverFacade;
+  var emptyObject = {};
+  function getObserverFacade(ractive, keypath, callback, options) {
+  	var observer, isPatternObserver, cancelled;
+
+  	keypath = getKeypath(normalise(keypath));
+  	options = options || emptyObject;
+
+  	// pattern observers are treated differently
+  	if (keypath.isPattern) {
+  		observer = new observe_PatternObserver(ractive, keypath, callback, options);
+  		ractive.viewmodel.patternObservers.push(observer);
+  		isPatternObserver = true;
+  	} else {
+  		observer = new observe_Observer(ractive, keypath, callback, options);
+  	}
+
+  	observer.init(options.init);
+  	ractive.viewmodel.register(keypath, observer, isPatternObserver ? "patternObservers" : "observers");
+
+  	// This flag allows observers to initialise even with undefined values
+  	observer.ready = true;
+
+  	var facade = {
+  		cancel: function () {
+  			var index;
+
+  			if (cancelled) {
+  				return;
+  			}
+
+  			if (isPatternObserver) {
+  				index = ractive.viewmodel.patternObservers.indexOf(observer);
+
+  				ractive.viewmodel.patternObservers.splice(index, 1);
+  				ractive.viewmodel.unregister(keypath, observer, "patternObservers");
+  			} else {
+  				ractive.viewmodel.unregister(keypath, observer, "observers");
+  			}
+  			cancelled = true;
+  		}
+  	};
+
+  	ractive._observers.push(facade);
+  	return facade;
+  }
+
+  var observe = Ractive$observe;
+  function Ractive$observe(keypath, callback, options) {
+
+  	var observers, map, keypaths, i;
+
+  	// Allow a map of keypaths to handlers
+  	if (isObject(keypath)) {
+  		options = cal
