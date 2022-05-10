@@ -2818,4 +2818,292 @@
 
   	// Allow a map of keypaths to handlers
   	if (isObject(keypath)) {
-  		options = cal
+  		options = callback;
+  		map = keypath;
+
+  		observers = [];
+
+  		for (keypath in map) {
+  			if (map.hasOwnProperty(keypath)) {
+  				callback = map[keypath];
+  				observers.push(this.observe(keypath, callback, options));
+  			}
+  		}
+
+  		return {
+  			cancel: function () {
+  				while (observers.length) {
+  					observers.pop().cancel();
+  				}
+  			}
+  		};
+  	}
+
+  	// Allow `ractive.observe( callback )` - i.e. observe entire model
+  	if (typeof keypath === "function") {
+  		options = callback;
+  		callback = keypath;
+  		keypath = "";
+
+  		return observe_getObserverFacade(this, keypath, callback, options);
+  	}
+
+  	keypaths = keypath.split(" ");
+
+  	// Single keypath
+  	if (keypaths.length === 1) {
+  		return observe_getObserverFacade(this, keypath, callback, options);
+  	}
+
+  	// Multiple space-separated keypaths
+  	observers = [];
+
+  	i = keypaths.length;
+  	while (i--) {
+  		keypath = keypaths[i];
+
+  		if (keypath) {
+  			observers.push(observe_getObserverFacade(this, keypath, callback, options));
+  		}
+  	}
+
+  	return {
+  		cancel: function () {
+  			while (observers.length) {
+  				observers.pop().cancel();
+  			}
+  		}
+  	};
+  }
+
+  var observeOnce = Ractive$observeOnce;
+
+  function Ractive$observeOnce(property, callback, options) {
+
+  	var observer = this.observe(property, function () {
+  		callback.apply(this, arguments);
+  		observer.cancel();
+  	}, { init: false, defer: options && options.defer });
+
+  	return observer;
+  }
+
+  var shared_trim = function (str) {
+    return str.trim();
+  };
+
+  var notEmptyString = function (str) {
+    return str !== "";
+  };
+
+  var off = Ractive$off;
+  function Ractive$off(eventName, callback) {
+  	var _this = this;
+
+  	var eventNames;
+
+  	// if no arguments specified, remove all callbacks
+  	if (!eventName) {
+  		// TODO use this code instead, once the following issue has been resolved
+  		// in PhantomJS (tests are unpassable otherwise!)
+  		// https://github.com/ariya/phantomjs/issues/11856
+  		// defineProperty( this, '_subs', { value: create( null ), configurable: true });
+  		for (eventName in this._subs) {
+  			delete this._subs[eventName];
+  		}
+  	} else {
+  		// Handle multiple space-separated event names
+  		eventNames = eventName.split(" ").map(shared_trim).filter(notEmptyString);
+
+  		eventNames.forEach(function (eventName) {
+  			var subscribers, index;
+
+  			// If we have subscribers for this event...
+  			if (subscribers = _this._subs[eventName]) {
+  				// ...if a callback was specified, only remove that
+  				if (callback) {
+  					index = subscribers.indexOf(callback);
+  					if (index !== -1) {
+  						subscribers.splice(index, 1);
+  					}
+  				}
+
+  				// ...otherwise remove all callbacks
+  				else {
+  					_this._subs[eventName] = [];
+  				}
+  			}
+  		});
+  	}
+
+  	return this;
+  }
+
+  var on = Ractive$on;
+  function Ractive$on(eventName, callback) {
+  	var _this = this;
+
+  	var listeners, n, eventNames;
+
+  	// allow mutliple listeners to be bound in one go
+  	if (typeof eventName === "object") {
+  		listeners = [];
+
+  		for (n in eventName) {
+  			if (eventName.hasOwnProperty(n)) {
+  				listeners.push(this.on(n, eventName[n]));
+  			}
+  		}
+
+  		return {
+  			cancel: function () {
+  				var listener;
+
+  				while (listener = listeners.pop()) {
+  					listener.cancel();
+  				}
+  			}
+  		};
+  	}
+
+  	// Handle multiple space-separated event names
+  	eventNames = eventName.split(" ").map(shared_trim).filter(notEmptyString);
+
+  	eventNames.forEach(function (eventName) {
+  		(_this._subs[eventName] || (_this._subs[eventName] = [])).push(callback);
+  	});
+
+  	return {
+  		cancel: function () {
+  			return _this.off(eventName, callback);
+  		}
+  	};
+  }
+
+  var once = Ractive$once;
+
+  function Ractive$once(eventName, handler) {
+
+  	var listener = this.on(eventName, function () {
+  		handler.apply(this, arguments);
+  		listener.cancel();
+  	});
+
+  	// so we can still do listener.cancel() manually
+  	return listener;
+  }
+
+  // This function takes an array, the name of a mutator method, and the
+  // arguments to call that mutator method with, and returns an array that
+  // maps the old indices to their new indices.
+
+  // So if you had something like this...
+  //
+  //     array = [ 'a', 'b', 'c', 'd' ];
+  //     array.push( 'e' );
+  //
+  // ...you'd get `[ 0, 1, 2, 3 ]` - in other words, none of the old indices
+  // have changed. If you then did this...
+  //
+  //     array.unshift( 'z' );
+  //
+  // ...the indices would be `[ 1, 2, 3, 4, 5 ]` - every item has been moved
+  // one higher to make room for the 'z'. If you removed an item, the new index
+  // would be -1...
+  //
+  //     array.splice( 2, 2 );
+  //
+  // ...this would result in [ 0, 1, -1, -1, 2, 3 ].
+  //
+  // This information is used to enable fast, non-destructive shuffling of list
+  // sections when you do e.g. `ractive.splice( 'items', 2, 2 );
+
+  var shared_getNewIndices = getNewIndices;
+
+  function getNewIndices(array, methodName, args) {
+  	var spliceArguments,
+  	    len,
+  	    newIndices = [],
+  	    removeStart,
+  	    removeEnd,
+  	    balance,
+  	    i;
+
+  	spliceArguments = getSpliceEquivalent(array, methodName, args);
+
+  	if (!spliceArguments) {
+  		return null; // TODO support reverse and sort?
+  	}
+
+  	len = array.length;
+  	balance = spliceArguments.length - 2 - spliceArguments[1];
+
+  	removeStart = Math.min(len, spliceArguments[0]);
+  	removeEnd = removeStart + spliceArguments[1];
+
+  	for (i = 0; i < removeStart; i += 1) {
+  		newIndices.push(i);
+  	}
+
+  	for (; i < removeEnd; i += 1) {
+  		newIndices.push(-1);
+  	}
+
+  	for (; i < len; i += 1) {
+  		newIndices.push(i + balance);
+  	}
+
+  	// there is a net shift for the rest of the array starting with index + balance
+  	if (balance !== 0) {
+  		newIndices.touchedFrom = spliceArguments[0];
+  	} else {
+  		newIndices.touchedFrom = array.length;
+  	}
+
+  	return newIndices;
+  }
+
+  // The pop, push, shift an unshift methods can all be represented
+  // as an equivalent splice
+  function getSpliceEquivalent(array, methodName, args) {
+  	switch (methodName) {
+  		case "splice":
+  			if (args[0] !== undefined && args[0] < 0) {
+  				args[0] = array.length + Math.max(args[0], -array.length);
+  			}
+
+  			while (args.length < 2) {
+  				args.push(0);
+  			}
+
+  			// ensure we only remove elements that exist
+  			args[1] = Math.min(args[1], array.length - args[0]);
+
+  			return args;
+
+  		case "sort":
+  		case "reverse":
+  			return null;
+
+  		case "pop":
+  			if (array.length) {
+  				return [array.length - 1, 1];
+  			}
+  			return [0, 0];
+
+  		case "push":
+  			return [array.length, 0].concat(args);
+
+  		case "shift":
+  			return [0, array.length ? 1 : 0];
+
+  		case "unshift":
+  			return [0, 0].concat(args);
+  	}
+  }
+
+  var arrayProto = Array.prototype;
+
+  var makeArrayMethod = function (methodName) {
+  	return function (keypath) {
+  		for (var _len = arguments.length, args = Array(_le
