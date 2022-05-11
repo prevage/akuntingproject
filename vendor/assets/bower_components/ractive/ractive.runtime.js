@@ -3402,4 +3402,246 @@
   			var styles = options.noCssTransform ? options.css : transform(options.css, id);
 
   			proto.cssId = id;
-  			global_cs
+  			global_css.add({ id: id, styles: styles });
+  		}
+  	},
+
+  	init: function () {}
+  };
+
+  var css_css = cssConfigurator;
+
+  function validate(data) {
+  	// Warn if userOptions.data is a non-POJO
+  	if (data && data.constructor !== Object) {
+  		if (typeof data === "function") {} else if (typeof data !== "object") {
+  			fatal("data option must be an object or a function, `" + data + "` is not valid");
+  		} else {
+  			warnIfDebug("If supplied, options.data should be a plain JavaScript object - using a non-POJO as the root object may work, but is discouraged");
+  		}
+  	}
+  }
+
+  var dataConfigurator = {
+  	name: "data",
+
+  	extend: function (Parent, proto, options) {
+  		var key = undefined,
+  		    value = undefined;
+
+  		// check for non-primitives, which could cause mutation-related bugs
+  		if (options.data && isObject(options.data)) {
+  			for (key in options.data) {
+  				value = options.data[key];
+
+  				if (value && typeof value === "object") {
+  					if (isObject(value) || isArray(value)) {
+  						warnIfDebug("Passing a `data` option with object and array properties to Ractive.extend() is discouraged, as mutating them is likely to cause bugs. Consider using a data function instead:\n\n  // this...\n  data: function () {\n    return {\n      myObject: {}\n    };\n  })\n\n  // instead of this:\n  data: {\n    myObject: {}\n  }");
+  					}
+  				}
+  			}
+  		}
+
+  		proto.data = custom_data__combine(proto.data, options.data);
+  	},
+
+  	init: function (Parent, ractive, options) {
+  		var result = custom_data__combine(Parent.prototype.data, options.data);
+
+  		if (typeof result === "function") {
+  			result = result.call(ractive);
+  		}
+
+  		return result || {};
+  	},
+
+  	reset: function (ractive) {
+  		var result = this.init(ractive.constructor, ractive, ractive.viewmodel);
+
+  		ractive.viewmodel.reset(result);
+  		return true;
+  	}
+  };
+
+  var custom_data = dataConfigurator;
+
+  function custom_data__combine(parentValue, childValue) {
+  	validate(childValue);
+
+  	var parentIsFn = typeof parentValue === "function";
+  	var childIsFn = typeof childValue === "function";
+
+  	// Very important, otherwise child instance can become
+  	// the default data object on Ractive or a component.
+  	// then ractive.set() ends up setting on the prototype!
+  	if (!childValue && !parentIsFn) {
+  		childValue = {};
+  	}
+
+  	// Fast path, where we just need to copy properties from
+  	// parent to child
+  	if (!parentIsFn && !childIsFn) {
+  		return fromProperties(childValue, parentValue);
+  	}
+
+  	return function () {
+  		var child = childIsFn ? callDataFunction(childValue, this) : childValue;
+  		var parent = parentIsFn ? callDataFunction(parentValue, this) : parentValue;
+
+  		return fromProperties(child, parent);
+  	};
+  }
+
+  function callDataFunction(fn, context) {
+  	var data = fn.call(context);
+
+  	if (!data) return;
+
+  	if (typeof data !== "object") {
+  		fatal("Data function must return an object");
+  	}
+
+  	if (data.constructor !== Object) {
+  		warnOnceIfDebug("Data function returned something other than a plain JavaScript object. This might work, but is strongly discouraged");
+  	}
+
+  	return data;
+  }
+
+  function fromProperties(primary, secondary) {
+  	if (primary && secondary) {
+  		for (var key in secondary) {
+  			if (!(key in primary)) {
+  				primary[key] = secondary[key];
+  			}
+  		}
+
+  		return primary;
+  	}
+
+  	return primary || secondary;
+  }
+
+  // TODO do we need to support this in the new Ractive() case?
+
+  var parse = null;
+
+  var parseOptions = ["preserveWhitespace", "sanitize", "stripComments", "delimiters", "tripleDelimiters", "interpolate"];
+
+  var parser = {
+  	fromId: fromId, isHashedId: isHashedId, isParsed: isParsed, getParseOptions: getParseOptions, createHelper: template_parser__createHelper,
+  	parse: doParse
+  };
+
+  function template_parser__createHelper(parseOptions) {
+  	var helper = create(parser);
+  	helper.parse = function (template, options) {
+  		return doParse(template, options || parseOptions);
+  	};
+  	return helper;
+  }
+
+  function doParse(template, parseOptions) {
+  	if (!parse) {
+  		throw new Error("Missing Ractive.parse - cannot parse template. Either preparse or use the version that includes the parser");
+  	}
+
+  	return parse(template, parseOptions || this.options);
+  }
+
+  function fromId(id, options) {
+  	var template;
+
+  	if (!isClient) {
+  		if (options && options.noThrow) {
+  			return;
+  		}
+  		throw new Error("Cannot retrieve template #" + id + " as Ractive is not running in a browser.");
+  	}
+
+  	if (isHashedId(id)) {
+  		id = id.substring(1);
+  	}
+
+  	if (!(template = document.getElementById(id))) {
+  		if (options && options.noThrow) {
+  			return;
+  		}
+  		throw new Error("Could not find template element with id #" + id);
+  	}
+
+  	if (template.tagName.toUpperCase() !== "SCRIPT") {
+  		if (options && options.noThrow) {
+  			return;
+  		}
+  		throw new Error("Template element with id #" + id + ", must be a <script> element");
+  	}
+
+  	return "textContent" in template ? template.textContent : template.innerHTML;
+  }
+
+  function isHashedId(id) {
+  	return id && id[0] === "#";
+  }
+
+  function isParsed(template) {
+  	return !(typeof template === "string");
+  }
+
+  function getParseOptions(ractive) {
+  	// Could be Ractive or a Component
+  	if (ractive.defaults) {
+  		ractive = ractive.defaults;
+  	}
+
+  	return parseOptions.reduce(function (val, key) {
+  		val[key] = ractive[key];
+  		return val;
+  	}, {});
+  }
+
+  var template_parser = parser;
+
+  var templateConfigurator = {
+  	name: "template",
+
+  	extend: function extend(Parent, proto, options) {
+  		var template;
+
+  		// only assign if exists
+  		if ("template" in options) {
+  			template = options.template;
+
+  			if (typeof template === "function") {
+  				proto.template = template;
+  			} else {
+  				proto.template = parseIfString(template, proto);
+  			}
+  		}
+  	},
+
+  	init: function init(Parent, ractive, options) {
+  		var template, fn;
+
+  		// TODO because of prototypal inheritance, we might just be able to use
+  		// ractive.template, and not bother passing through the Parent object.
+  		// At present that breaks the test mocks' expectations
+  		template = "template" in options ? options.template : Parent.prototype.template;
+
+  		if (typeof template === "function") {
+  			fn = template;
+  			template = getDynamicTemplate(ractive, fn);
+
+  			ractive._config.template = {
+  				fn: fn,
+  				result: template
+  			};
+  		}
+
+  		template = parseIfString(template, ractive);
+
+  		// TODO the naming of this is confusing - ractive.template refers to [...],
+  		// but Component.prototype.template refers to {v:1,t:[],p:[]}...
+  		// it's unnecessary, because the developer never needs to access
+  		// ractive.template
+  		
