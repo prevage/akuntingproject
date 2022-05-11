@@ -3905,4 +3905,295 @@
   })));
 
   order = [].concat(defaultKeys.filter(function (key) {
-  	return !config_registries[key
+  	return !config_registries[key] && !custom[key];
+  }), config_registries, custom.data, custom.template, custom.css);
+
+  config = {
+  	extend: function (Parent, proto, options) {
+  		return configure("extend", Parent, proto, options);
+  	},
+
+  	init: function (Parent, ractive, options) {
+  		return configure("init", Parent, ractive, options);
+  	},
+
+  	reset: function (ractive) {
+  		return order.filter(function (c) {
+  			return c.reset && c.reset(ractive);
+  		}).map(function (c) {
+  			return c.name;
+  		});
+  	},
+
+  	// this defines the order. TODO this isn't used anywhere in the codebase,
+  	// only in the test suite - should get rid of it
+  	order: order };
+
+  function configure(method, Parent, target, options) {
+  	config_deprecate(options);
+
+  	for (var key in options) {
+  		if (isStandardKey.hasOwnProperty(key)) {
+  			var value = options[key];
+
+  			// warn the developer if they passed a function and ignore its value
+
+  			// NOTE: we allow some functions on "el" because we duck type element lists
+  			// and some libraries or ef'ed-up virtual browsers (phantomJS) return a
+  			// function object as the result of querySelector methods
+  			if (key !== "el" && typeof value === "function") {
+  				warnIfDebug("" + key + " is a Ractive option that does not expect a function and will be ignored", method === "init" ? target : null);
+  			} else {
+  				target[key] = value;
+  			}
+  		}
+  	}
+
+  	config_registries.forEach(function (registry) {
+  		registry[method](Parent, target, options);
+  	});
+
+  	custom_adapt[method](Parent, target, options);
+  	template_template[method](Parent, target, options);
+  	css_css[method](Parent, target, options);
+
+  	extendOtherMethods(Parent.prototype, target, options);
+  }
+
+  function extendOtherMethods(parent, target, options) {
+  	for (var key in options) {
+  		if (!isBlacklisted[key] && options.hasOwnProperty(key)) {
+  			var member = options[key];
+
+  			// if this is a method that overwrites a method, wrap it:
+  			if (typeof member === "function") {
+  				member = wrapPrototype(parent, key, member);
+  			}
+
+  			target[key] = member;
+  		}
+  	}
+  }
+
+  function makeObj(array) {
+  	var obj = {};
+  	array.forEach(function (x) {
+  		return obj[x] = true;
+  	});
+  	return obj;
+  }
+
+  var config_config = config;
+
+  var prototype_bubble = Fragment$bubble;
+
+  function Fragment$bubble() {
+  	this.dirtyValue = this.dirtyArgs = true;
+
+  	if (this.bound && typeof this.owner.bubble === "function") {
+  		this.owner.bubble();
+  	}
+  }
+
+  var Fragment_prototype_detach = Fragment$detach;
+
+  function Fragment$detach() {
+  	var docFrag;
+
+  	if (this.items.length === 1) {
+  		return this.items[0].detach();
+  	}
+
+  	docFrag = document.createDocumentFragment();
+
+  	this.items.forEach(function (item) {
+  		var node = item.detach();
+
+  		// TODO The if {...} wasn't previously required - it is now, because we're
+  		// forcibly detaching everything to reorder sections after an update. That's
+  		// a non-ideal brute force approach, implemented to get all the tests to pass
+  		// - as soon as it's replaced with something more elegant, this should
+  		// revert to `docFrag.appendChild( item.detach() )`
+  		if (node) {
+  			docFrag.appendChild(node);
+  		}
+  	});
+
+  	return docFrag;
+  }
+
+  var Fragment_prototype_find = Fragment$find;
+
+  function Fragment$find(selector) {
+  	var i, len, item, queryResult;
+
+  	if (this.items) {
+  		len = this.items.length;
+  		for (i = 0; i < len; i += 1) {
+  			item = this.items[i];
+
+  			if (item.find && (queryResult = item.find(selector))) {
+  				return queryResult;
+  			}
+  		}
+
+  		return null;
+  	}
+  }
+
+  var Fragment_prototype_findAll = Fragment$findAll;
+
+  function Fragment$findAll(selector, query) {
+  	var i, len, item;
+
+  	if (this.items) {
+  		len = this.items.length;
+  		for (i = 0; i < len; i += 1) {
+  			item = this.items[i];
+
+  			if (item.findAll) {
+  				item.findAll(selector, query);
+  			}
+  		}
+  	}
+
+  	return query;
+  }
+
+  var Fragment_prototype_findAllComponents = Fragment$findAllComponents;
+
+  function Fragment$findAllComponents(selector, query) {
+  	var i, len, item;
+
+  	if (this.items) {
+  		len = this.items.length;
+  		for (i = 0; i < len; i += 1) {
+  			item = this.items[i];
+
+  			if (item.findAllComponents) {
+  				item.findAllComponents(selector, query);
+  			}
+  		}
+  	}
+
+  	return query;
+  }
+
+  var Fragment_prototype_findComponent = Fragment$findComponent;
+
+  function Fragment$findComponent(selector) {
+  	var len, i, item, queryResult;
+
+  	if (this.items) {
+  		len = this.items.length;
+  		for (i = 0; i < len; i += 1) {
+  			item = this.items[i];
+
+  			if (item.findComponent && (queryResult = item.findComponent(selector))) {
+  				return queryResult;
+  			}
+  		}
+
+  		return null;
+  	}
+  }
+
+  var prototype_findNextNode = Fragment$findNextNode;
+
+  function Fragment$findNextNode(item) {
+  	var index = item.index,
+  	    node;
+
+  	if (this.items[index + 1]) {
+  		node = this.items[index + 1].firstNode();
+  	}
+
+  	// if this is the root fragment, and there are no more items,
+  	// it means we're at the end...
+  	else if (this.owner === this.root) {
+  		if (!this.owner.component) {
+  			// TODO but something else could have been appended to
+  			// this.root.el, no?
+  			node = null;
+  		}
+
+  		// ...unless this is a component
+  		else {
+  			node = this.owner.component.findNextNode();
+  		}
+  	} else {
+  		node = this.owner.findNextNode(this);
+  	}
+
+  	return node;
+  }
+
+  var prototype_firstNode = Fragment$firstNode;
+
+  function Fragment$firstNode() {
+  	if (this.items && this.items[0]) {
+  		return this.items[0].firstNode();
+  	}
+
+  	return null;
+  }
+
+  var Parser,
+      ParseError,
+      parse_Parser__leadingWhitespace = /^\s+/;
+
+  ParseError = function (message) {
+  	this.name = "ParseError";
+  	this.message = message;
+  	try {
+  		throw new Error(message);
+  	} catch (e) {
+  		this.stack = e.stack;
+  	}
+  };
+
+  ParseError.prototype = Error.prototype;
+
+  Parser = function (str, options) {
+  	var items,
+  	    item,
+  	    lineStart = 0;
+
+  	this.str = str;
+  	this.options = options || {};
+  	this.pos = 0;
+
+  	this.lines = this.str.split("\n");
+  	this.lineEnds = this.lines.map(function (line) {
+  		var lineEnd = lineStart + line.length + 1; // +1 for the newline
+
+  		lineStart = lineEnd;
+  		return lineEnd;
+  	}, 0);
+
+  	// Custom init logic
+  	if (this.init) this.init(str, options);
+
+  	items = [];
+
+  	while (this.pos < this.str.length && (item = this.read())) {
+  		items.push(item);
+  	}
+
+  	this.leftover = this.remaining();
+  	this.result = this.postProcess ? this.postProcess(items, options) : items;
+  };
+
+  Parser.prototype = {
+  	read: function (converters) {
+  		var pos, i, len, item;
+
+  		if (!converters) converters = this.converters;
+
+  		pos = this.pos;
+
+  		len = converters.length;
+  		for (i = 0; i < len; i += 1) {
+  			this.pos = pos; // reset for each attempt
+
+  			if (item = converters[i](this)
