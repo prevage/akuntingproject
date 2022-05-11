@@ -3644,4 +3644,265 @@
   		// but Component.prototype.template refers to {v:1,t:[],p:[]}...
   		// it's unnecessary, because the developer never needs to access
   		// ractive.template
-  		
+  		ractive.template = template.t;
+
+  		if (template.p) {
+  			extendPartials(ractive.partials, template.p);
+  		}
+  	},
+
+  	reset: function (ractive) {
+  		var result = resetValue(ractive),
+  		    parsed;
+
+  		if (result) {
+  			parsed = parseIfString(result, ractive);
+
+  			ractive.template = parsed.t;
+  			extendPartials(ractive.partials, parsed.p, true);
+
+  			return true;
+  		}
+  	}
+  };
+
+  function resetValue(ractive) {
+  	var initial = ractive._config.template,
+  	    result;
+
+  	// If this isn't a dynamic template, there's nothing to do
+  	if (!initial || !initial.fn) {
+  		return;
+  	}
+
+  	result = getDynamicTemplate(ractive, initial.fn);
+
+  	// TODO deep equality check to prevent unnecessary re-rendering
+  	// in the case of already-parsed templates
+  	if (result !== initial.result) {
+  		initial.result = result;
+  		result = parseIfString(result, ractive);
+  		return result;
+  	}
+  }
+
+  function getDynamicTemplate(ractive, fn) {
+  	var helper = template_template__createHelper(template_parser.getParseOptions(ractive));
+  	return fn.call(ractive, helper);
+  }
+
+  function template_template__createHelper(parseOptions) {
+  	var helper = create(template_parser);
+  	helper.parse = function (template, options) {
+  		return template_parser.parse(template, options || parseOptions);
+  	};
+  	return helper;
+  }
+
+  function parseIfString(template, ractive) {
+  	if (typeof template === "string") {
+  		// ID of an element containing the template?
+  		if (template[0] === "#") {
+  			template = template_parser.fromId(template);
+  		}
+
+  		template = parse(template, template_parser.getParseOptions(ractive));
+  	}
+
+  	// Check that the template even exists
+  	else if (template == undefined) {
+  		throw new Error("The template cannot be " + template + ".");
+  	}
+
+  	// Check the parsed template has a version at all
+  	else if (typeof template.v !== "number") {
+  		throw new Error("The template parser was passed a non-string template, but the template doesn't have a version.  Make sure you're passing in the template you think you are.");
+  	}
+
+  	// Check we're using the correct version
+  	else if (template.v !== TEMPLATE_VERSION) {
+  		throw new Error("Mismatched template version (expected " + TEMPLATE_VERSION + ", got " + template.v + ") Please ensure you are using the latest version of Ractive.js in your build process as well as in your app");
+  	}
+
+  	return template;
+  }
+
+  function extendPartials(existingPartials, newPartials, overwrite) {
+  	if (!newPartials) return;
+
+  	// TODO there's an ambiguity here - we need to overwrite in the `reset()`
+  	// case, but not initially...
+
+  	for (var key in newPartials) {
+  		if (overwrite || !existingPartials.hasOwnProperty(key)) {
+  			existingPartials[key] = newPartials[key];
+  		}
+  	}
+  }
+
+  var template_template = templateConfigurator;
+
+  var config_registries__registryNames, Registry, registries;
+
+  config_registries__registryNames = ["adaptors", "components", "computed", "decorators", "easing", "events", "interpolators", "partials", "transitions"];
+
+  Registry = function (name, useDefaults) {
+  	this.name = name;
+  	this.useDefaults = useDefaults;
+  };
+
+  Registry.prototype = {
+  	constructor: Registry,
+
+  	extend: function (Parent, proto, options) {
+  		this.configure(this.useDefaults ? Parent.defaults : Parent, this.useDefaults ? proto : proto.constructor, options);
+  	},
+
+  	init: function () {},
+
+  	configure: function (Parent, target, options) {
+  		var name = this.name,
+  		    option = options[name],
+  		    registry;
+
+  		registry = create(Parent[name]);
+
+  		for (var key in option) {
+  			registry[key] = option[key];
+  		}
+
+  		target[name] = registry;
+  	},
+
+  	reset: function (ractive) {
+  		var registry = ractive[this.name];
+  		var changed = false;
+  		Object.keys(registry).forEach(function (key) {
+  			var item = registry[key];
+  			if (item._fn) {
+  				if (item._fn.isOwner) {
+  					registry[key] = item._fn;
+  				} else {
+  					delete registry[key];
+  				}
+  				changed = true;
+  			}
+  		});
+  		return changed;
+  	}
+  };
+
+  registries = config_registries__registryNames.map(function (name) {
+  	return new Registry(name, name === "computed");
+  });
+
+  var config_registries = registries;
+
+  /*this.configure(
+  	this.useDefaults ? Parent.defaults : Parent,
+  	ractive,
+  	options );*/
+
+  var wrapPrototype = wrap;
+
+  function wrap(parent, name, method) {
+  	if (!/_super/.test(method)) {
+  		return method;
+  	}
+
+  	var wrapper = function wrapSuper() {
+  		var superMethod = getSuperMethod(wrapper._parent, name),
+  		    hasSuper = ("_super" in this),
+  		    oldSuper = this._super,
+  		    result;
+
+  		this._super = superMethod;
+
+  		result = method.apply(this, arguments);
+
+  		if (hasSuper) {
+  			this._super = oldSuper;
+  		} else {
+  			delete this._super;
+  		}
+
+  		return result;
+  	};
+
+  	wrapper._parent = parent;
+  	wrapper._method = method;
+
+  	return wrapper;
+  }
+
+  function getSuperMethod(parent, name) {
+  	var value, method;
+
+  	if (name in parent) {
+  		value = parent[name];
+
+  		if (typeof value === "function") {
+  			method = value;
+  		} else {
+  			method = function returnValue() {
+  				return value;
+  			};
+  		}
+  	} else {
+  		method = noop;
+  	}
+
+  	return method;
+  }
+
+  var config_deprecate = deprecate;
+  function getMessage(deprecated, correct, isError) {
+  	return "options." + deprecated + " has been deprecated in favour of options." + correct + "." + (isError ? " You cannot specify both options, please use options." + correct + "." : "");
+  }
+
+  function deprecateOption(options, deprecatedOption, correct) {
+  	if (deprecatedOption in options) {
+  		if (!(correct in options)) {
+  			warnIfDebug(getMessage(deprecatedOption, correct));
+  			options[correct] = options[deprecatedOption];
+  		} else {
+  			throw new Error(getMessage(deprecatedOption, correct, true));
+  		}
+  	}
+  }
+  function deprecate(options) {
+  	deprecateOption(options, "beforeInit", "onconstruct");
+  	deprecateOption(options, "init", "onrender");
+  	deprecateOption(options, "complete", "oncomplete");
+  	deprecateOption(options, "eventDefinitions", "events");
+
+  	// Using extend with Component instead of options,
+  	// like Human.extend( Spider ) means adaptors as a registry
+  	// gets copied to options. So we have to check if actually an array
+  	if (isArray(options.adaptors)) {
+  		deprecateOption(options, "adaptors", "adapt");
+  	}
+  }
+
+  var config, order, defaultKeys, custom, isBlacklisted, isStandardKey;
+
+  custom = {
+  	adapt: custom_adapt,
+  	css: css_css,
+  	data: custom_data,
+  	template: template_template
+  };
+
+  defaultKeys = Object.keys(config_defaults);
+
+  isStandardKey = makeObj(defaultKeys.filter(function (key) {
+  	return !custom[key];
+  }));
+
+  // blacklisted keys that we don't double extend
+  isBlacklisted = makeObj(defaultKeys.concat(config_registries.map(function (r) {
+  	return r.name;
+  })));
+
+  order = [].concat(defaultKeys.filter(function (key) {
+  	return !config_registries[key
