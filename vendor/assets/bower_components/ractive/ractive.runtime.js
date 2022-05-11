@@ -3106,4 +3106,300 @@
 
   var makeArrayMethod = function (methodName) {
   	return function (keypath) {
-  		for (var _len = arguments.length, args = Array(_le
+  		for (var _len = arguments.length, args = Array(_len > 1 ? _len - 1 : 0), _key = 1; _key < _len; _key++) {
+  			args[_key - 1] = arguments[_key];
+  		}
+
+  		var array,
+  		    newIndices = [],
+  		    len,
+  		    promise,
+  		    result;
+
+  		keypath = getKeypath(normalise(keypath));
+
+  		array = this.viewmodel.get(keypath);
+  		len = array.length;
+
+  		if (!isArray(array)) {
+  			throw new Error("Called ractive." + methodName + "('" + keypath.str + "'), but '" + keypath.str + "' does not refer to an array");
+  		}
+
+  		newIndices = shared_getNewIndices(array, methodName, args);
+
+  		result = arrayProto[methodName].apply(array, args);
+  		promise = global_runloop.start(this, true).then(function () {
+  			return result;
+  		});
+
+  		if (!!newIndices) {
+  			this.viewmodel.smartUpdate(keypath, array, newIndices);
+  		} else {
+  			this.viewmodel.mark(keypath);
+  		}
+
+  		global_runloop.end();
+
+  		return promise;
+  	};
+  };
+
+  var pop = makeArrayMethod("pop");
+
+  var push = makeArrayMethod("push");
+
+  var css,
+      update,
+      styleElement,
+      head,
+      styleSheet,
+      inDom,
+      global_css__prefix = "/* Ractive.js component styles */\n",
+      styles = [],
+      dirty = false;
+
+  if (!isClient) {
+  	// TODO handle encapsulated CSS in server-rendered HTML!
+  	css = {
+  		add: noop,
+  		apply: noop
+  	};
+  } else {
+  	styleElement = document.createElement("style");
+  	styleElement.type = "text/css";
+
+  	head = document.getElementsByTagName("head")[0];
+
+  	inDom = false;
+
+  	// Internet Exploder won't let you use styleSheet.innerHTML - we have to
+  	// use styleSheet.cssText instead
+  	styleSheet = styleElement.styleSheet;
+
+  	update = function () {
+  		var css = global_css__prefix + styles.map(function (s) {
+  			return "\n/* {" + s.id + "} */\n" + s.styles;
+  		}).join("\n");
+
+  		if (styleSheet) {
+  			styleSheet.cssText = css;
+  		} else {
+  			styleElement.innerHTML = css;
+  		}
+
+  		if (!inDom) {
+  			head.appendChild(styleElement);
+  			inDom = true;
+  		}
+  	};
+
+  	css = {
+  		add: function (s) {
+  			styles.push(s);
+  			dirty = true;
+  		},
+
+  		apply: function () {
+  			if (dirty) {
+  				update();
+  				dirty = false;
+  			}
+  		}
+  	};
+  }
+
+  var global_css = css;
+
+  var prototype_render = Ractive$render;
+
+  var renderHook = new hooks_Hook("render"),
+      completeHook = new hooks_Hook("complete");
+  function Ractive$render(target, anchor) {
+  	var _this = this;
+
+  	var promise, instances, transitionsEnabled;
+
+  	// if `noIntro` is `true`, temporarily disable transitions
+  	transitionsEnabled = this.transitionsEnabled;
+  	if (this.noIntro) {
+  		this.transitionsEnabled = false;
+  	}
+
+  	promise = global_runloop.start(this, true);
+  	global_runloop.scheduleTask(function () {
+  		return renderHook.fire(_this);
+  	}, true);
+
+  	if (this.fragment.rendered) {
+  		throw new Error("You cannot call ractive.render() on an already rendered instance! Call ractive.unrender() first");
+  	}
+
+  	target = getElement(target) || this.el;
+  	anchor = getElement(anchor) || this.anchor;
+
+  	this.el = target;
+  	this.anchor = anchor;
+
+  	if (!this.append && target) {
+  		// Teardown any existing instances *before* trying to set up the new one -
+  		// avoids certain weird bugs
+  		var others = target.__ractive_instances__;
+  		if (others && others.length) {
+  			removeOtherInstances(others);
+  		}
+
+  		// make sure we are the only occupants
+  		target.innerHTML = ""; // TODO is this quicker than removeChild? Initial research inconclusive
+  	}
+
+  	if (this.cssId) {
+  		// ensure encapsulated CSS is up-to-date
+  		global_css.apply();
+  	}
+
+  	if (target) {
+  		if (!(instances = target.__ractive_instances__)) {
+  			target.__ractive_instances__ = [this];
+  		} else {
+  			instances.push(this);
+  		}
+
+  		if (anchor) {
+  			target.insertBefore(this.fragment.render(), anchor);
+  		} else {
+  			target.appendChild(this.fragment.render());
+  		}
+  	}
+
+  	global_runloop.end();
+
+  	this.transitionsEnabled = transitionsEnabled;
+
+  	return promise.then(function () {
+  		return completeHook.fire(_this);
+  	});
+  }
+
+  function removeOtherInstances(others) {
+  	others.splice(0, others.length).forEach(teardown);
+  }
+
+  var adaptConfigurator = {
+  	extend: function (Parent, proto, options) {
+  		proto.adapt = custom_adapt__combine(proto.adapt, ensureArray(options.adapt));
+  	},
+
+  	init: function () {}
+  };
+
+  var custom_adapt = adaptConfigurator;
+
+  function custom_adapt__combine(a, b) {
+  	var c = a.slice(),
+  	    i = b.length;
+
+  	while (i--) {
+  		if (! ~c.indexOf(b[i])) {
+  			c.push(b[i]);
+  		}
+  	}
+
+  	return c;
+  }
+
+  var transform = transformCss;
+
+  var selectorsPattern = /(?:^|\})?\s*([^\{\}]+)\s*\{/g,
+      commentsPattern = /\/\*.*?\*\//g,
+      selectorUnitPattern = /((?:(?:\[[^\]+]\])|(?:[^\s\+\>\~:]))+)((?::[^\s\+\>\~\(]+(?:\([^\)]+\))?)?\s*[\s\+\>\~]?)\s*/g,
+      mediaQueryPattern = /^@media/,
+      dataRvcGuidPattern = /\[data-ractive-css~="\{[a-z0-9-]+\}"]/g;
+  function transformCss(css, id) {
+  	var transformed, dataAttr, addGuid;
+
+  	dataAttr = "[data-ractive-css~=\"{" + id + "}\"]";
+
+  	addGuid = function (selector) {
+  		var selectorUnits,
+  		    match,
+  		    unit,
+  		    base,
+  		    prepended,
+  		    appended,
+  		    i,
+  		    transformed = [];
+
+  		selectorUnits = [];
+
+  		while (match = selectorUnitPattern.exec(selector)) {
+  			selectorUnits.push({
+  				str: match[0],
+  				base: match[1],
+  				modifiers: match[2]
+  			});
+  		}
+
+  		// For each simple selector within the selector, we need to create a version
+  		// that a) combines with the id, and b) is inside the id
+  		base = selectorUnits.map(extractString);
+
+  		i = selectorUnits.length;
+  		while (i--) {
+  			appended = base.slice();
+
+  			// Pseudo-selectors should go after the attribute selector
+  			unit = selectorUnits[i];
+  			appended[i] = unit.base + dataAttr + unit.modifiers || "";
+
+  			prepended = base.slice();
+  			prepended[i] = dataAttr + " " + prepended[i];
+
+  			transformed.push(appended.join(" "), prepended.join(" "));
+  		}
+
+  		return transformed.join(", ");
+  	};
+
+  	if (dataRvcGuidPattern.test(css)) {
+  		transformed = css.replace(dataRvcGuidPattern, dataAttr);
+  	} else {
+  		transformed = css.replace(commentsPattern, "").replace(selectorsPattern, function (match, $1) {
+  			var selectors, transformed;
+
+  			// don't transform media queries!
+  			if (mediaQueryPattern.test($1)) return match;
+
+  			selectors = $1.split(",").map(trim);
+  			transformed = selectors.map(addGuid).join(", ") + " ";
+
+  			return match.replace($1, transformed);
+  		});
+  	}
+
+  	return transformed;
+  }
+
+  function trim(str) {
+  	if (str.trim) {
+  		return str.trim();
+  	}
+
+  	return str.replace(/^\s+/, "").replace(/\s+$/, "");
+  }
+
+  function extractString(unit) {
+  	return unit.str;
+  }
+
+  var css_css__uid = 1;
+
+  var cssConfigurator = {
+  	name: "css",
+
+  	extend: function (Parent, proto, options) {
+  		if (options.css) {
+  			var id = css_css__uid++;
+  			var styles = options.noCssTransform ? options.css : transform(options.css, id);
+
+  			proto.cssId = id;
+  			global_cs
