@@ -4486,4 +4486,245 @@
   		this.allowWhitespace();
   	},
 
-  	postProcess: function (resul
+  	postProcess: function (result) {
+  		if (result.length !== 1 || !onlyWhitespace.test(this.leftover)) {
+  			return null;
+  		}
+
+  		return { value: result[0].v };
+  	},
+
+  	converters: [function getPlaceholder(parser) {
+  		var placeholder;
+
+  		if (!parser.values) {
+  			return null;
+  		}
+
+  		placeholder = parser.matchPattern(placeholderAtStartPattern);
+
+  		if (placeholder && parser.values.hasOwnProperty(placeholder)) {
+  			return { v: parser.values[placeholder] };
+  		}
+  	}, function getSpecial(parser) {
+  		var special;
+
+  		if (special = parser.matchPattern(specialsPattern)) {
+  			return { v: specials[special] };
+  		}
+  	}, function getNumber(parser) {
+  		var number;
+
+  		if (number = parser.matchPattern(parseJSON__numberPattern)) {
+  			return { v: +number };
+  		}
+  	}, function getString(parser) {
+  		var stringLiteral = readStringLiteral(parser),
+  		    values;
+
+  		if (stringLiteral && (values = parser.values)) {
+  			return {
+  				v: stringLiteral.v.replace(placeholderPattern, function (match, $1) {
+  					return $1 in values ? values[$1] : $1;
+  				})
+  			};
+  		}
+
+  		return stringLiteral;
+  	}, function getObject(parser) {
+  		var result, pair;
+
+  		if (!parser.matchString("{")) {
+  			return null;
+  		}
+
+  		result = {};
+
+  		parser.allowWhitespace();
+
+  		if (parser.matchString("}")) {
+  			return { v: result };
+  		}
+
+  		while (pair = getKeyValuePair(parser)) {
+  			result[pair.key] = pair.value;
+
+  			parser.allowWhitespace();
+
+  			if (parser.matchString("}")) {
+  				return { v: result };
+  			}
+
+  			if (!parser.matchString(",")) {
+  				return null;
+  			}
+  		}
+
+  		return null;
+  	}, function getArray(parser) {
+  		var result, valueToken;
+
+  		if (!parser.matchString("[")) {
+  			return null;
+  		}
+
+  		result = [];
+
+  		parser.allowWhitespace();
+
+  		if (parser.matchString("]")) {
+  			return { v: result };
+  		}
+
+  		while (valueToken = parser.read()) {
+  			result.push(valueToken.v);
+
+  			parser.allowWhitespace();
+
+  			if (parser.matchString("]")) {
+  				return { v: result };
+  			}
+
+  			if (!parser.matchString(",")) {
+  				return null;
+  			}
+
+  			parser.allowWhitespace();
+  		}
+
+  		return null;
+  	}]
+  });
+
+  function getKeyValuePair(parser) {
+  	var key, valueToken, pair;
+
+  	parser.allowWhitespace();
+
+  	key = shared_readKey(parser);
+
+  	if (!key) {
+  		return null;
+  	}
+
+  	pair = { key: key };
+
+  	parser.allowWhitespace();
+  	if (!parser.matchString(":")) {
+  		return null;
+  	}
+  	parser.allowWhitespace();
+
+  	valueToken = parser.read();
+  	if (!valueToken) {
+  		return null;
+  	}
+
+  	pair.value = valueToken.v;
+
+  	return pair;
+  }
+
+  var parseJSON = function (str, values) {
+  	var parser = new JsonParser(str, {
+  		values: values
+  	});
+
+  	return parser.result;
+  };
+
+  var shared_processItems = processItems;
+
+  function processItems(items, values, guid, counter) {
+  	counter = counter || 0;
+
+  	return items.map(function (item) {
+  		var placeholderId, wrapped, value;
+
+  		if (item.text) {
+  			return item.text;
+  		}
+
+  		if (item.fragments) {
+  			return item.fragments.map(function (fragment) {
+  				return processItems(fragment.items, values, guid, counter);
+  			}).join("");
+  		}
+
+  		placeholderId = guid + "-" + counter++;
+
+  		if (item.keypath && (wrapped = item.root.viewmodel.wrapped[item.keypath.str])) {
+  			value = wrapped.value;
+  		} else {
+  			value = item.getValue();
+  		}
+
+  		values[placeholderId] = value;
+
+  		return "${" + placeholderId + "}";
+  	}).join("");
+  }
+
+  var getArgsList = Fragment$getArgsList;
+  function Fragment$getArgsList() {
+  	var values, source, parsed, result;
+
+  	if (this.dirtyArgs) {
+  		source = shared_processItems(this.items, values = {}, this.root._guid);
+  		parsed = parseJSON("[" + source + "]", values);
+
+  		if (!parsed) {
+  			result = [this.toString()];
+  		} else {
+  			result = parsed.value;
+  		}
+
+  		this.argsList = result;
+  		this.dirtyArgs = false;
+  	}
+
+  	return this.argsList;
+  }
+
+  var getNode = Fragment$getNode;
+
+  function Fragment$getNode() {
+  	var fragment = this;
+
+  	do {
+  		if (fragment.pElement) {
+  			return fragment.pElement.node;
+  		}
+  	} while (fragment = fragment.parent);
+
+  	return this.root.detached || this.root.el;
+  }
+
+  var prototype_getValue = Fragment$getValue;
+  function Fragment$getValue() {
+  	var values, source, parsed, result;
+
+  	if (this.dirtyValue) {
+  		source = shared_processItems(this.items, values = {}, this.root._guid);
+  		parsed = parseJSON(source, values);
+
+  		if (!parsed) {
+  			result = this.toString();
+  		} else {
+  			result = parsed.value;
+  		}
+
+  		this.value = result;
+  		this.dirtyValue = false;
+  	}
+
+  	return this.value;
+  }
+
+  var booleanAttributes, voidElementNames, htmlEntities, controlCharacters, entityPattern, lessThan, greaterThan, amp;
+
+  // https://github.com/kangax/html-minifier/issues/63#issuecomment-37763316
+  booleanAttributes = /^(allowFullscreen|async|autofocus|autoplay|checked|compact|controls|declare|default|defaultChecked|defaultMuted|defaultSelected|defer|disabled|enabled|formNoValidate|hidden|indeterminate|inert|isMap|itemScope|loop|multiple|muted|noHref|noResize|noShade|noValidate|noWrap|open|pauseOnExit|readOnly|required|reversed|scoped|seamless|selected|sortable|translate|trueSpeed|typeMustMatch|visible)$/i;
+  voidElementNames = /^(?:area|base|br|col|command|doctype|embed|hr|img|input|keygen|link|meta|param|source|track|wbr)$/i;
+
+  htmlEntities = { quot: 34, amp: 38, apos: 39, lt: 60, gt: 62, nbsp: 160, iexcl: 161, cent: 162, pound: 163, curren: 164, yen: 165, brvbar: 166, sect: 167, uml: 168, copy: 169, ordf: 170, laquo: 171, not: 172, shy: 173, reg: 174, macr: 175, deg: 176, plusmn: 177, sup2: 178, sup3: 179, acute: 180, micro: 181, para: 182, middot: 183, cedil: 184, sup1: 185, ordm: 186, raquo: 187, frac14: 188, frac12: 189, frac34: 190, iquest: 191, Agrave: 192, Aacute: 193, Acirc: 194, Atilde: 195, Auml: 196, Aring: 197, AElig: 198, Ccedil: 199, Egrave: 200, Eacute: 201, Ecirc: 202, Euml: 203, Igrave: 204, Iacute: 205, Icirc: 206, Iuml: 207, ETH: 208, Ntilde: 209, Ograve: 210, Oacute: 211, Ocirc: 212, Otilde: 213, Ouml: 214, times: 215, Oslash: 216, Ugrave: 217, Uacute: 218, Ucirc: 219, Uuml: 220, Yacute: 221, THORN: 222, szlig: 223, agrave: 224, aacute: 225, acirc: 226, atilde: 227, auml: 228, aring: 229, aelig: 230, ccedil: 231, egrave: 232, eacute: 233, ecirc: 234, euml: 235, igrave: 236, iacute: 237, icirc: 238, iuml: 239, eth: 240, ntilde: 241, ograve: 242, oacute: 243, ocirc: 244, otilde: 245, ouml: 246, divide: 247, oslash: 248, ugrave: 249, uacute: 250, ucirc: 251, uuml: 252, yacute: 253, thorn: 254, yuml: 255, OElig: 338, oelig: 339, Scaron: 352, scaron: 353, Yuml: 376, fnof: 402, circ: 710, tilde: 732, Alpha: 913, Beta: 914, Gamma: 915, Delta: 916, Epsilon: 917, Zeta: 918, Eta: 919, Theta: 920, Iota: 921, Kappa: 922, Lambda: 923, Mu: 924, Nu: 925, Xi: 926, Omicron: 927, Pi: 928, Rho: 929,
