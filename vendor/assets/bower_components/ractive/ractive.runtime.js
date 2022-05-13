@@ -4196,4 +4196,294 @@
   		for (i = 0; i < len; i += 1) {
   			this.pos = pos; // reset for each attempt
 
-  			if (item = converters[i](this)
+  			if (item = converters[i](this)) {
+  				return item;
+  			}
+  		}
+
+  		return null;
+  	},
+
+  	getLinePos: function (char) {
+  		var lineNum = 0,
+  		    lineStart = 0,
+  		    columnNum;
+
+  		while (char >= this.lineEnds[lineNum]) {
+  			lineStart = this.lineEnds[lineNum];
+  			lineNum += 1;
+  		}
+
+  		columnNum = char - lineStart;
+  		return [lineNum + 1, columnNum + 1, char]; // line/col should be one-based, not zero-based!
+  	},
+
+  	error: function (message) {
+  		var pos = this.getLinePos(this.pos);
+  		var lineNum = pos[0];
+  		var columnNum = pos[1];
+
+  		var line = this.lines[pos[0] - 1];
+  		var numTabs = 0;
+  		var annotation = line.replace(/\t/g, function (match, char) {
+  			if (char < pos[1]) {
+  				numTabs += 1;
+  			}
+
+  			return "  ";
+  		}) + "\n" + new Array(pos[1] + numTabs).join(" ") + "^----";
+
+  		var error = new ParseError("" + message + " at line " + lineNum + " character " + columnNum + ":\n" + annotation);
+
+  		error.line = pos[0];
+  		error.character = pos[1];
+  		error.shortMessage = message;
+
+  		throw error;
+  	},
+
+  	matchString: function (string) {
+  		if (this.str.substr(this.pos, string.length) === string) {
+  			this.pos += string.length;
+  			return string;
+  		}
+  	},
+
+  	matchPattern: function (pattern) {
+  		var match;
+
+  		if (match = pattern.exec(this.remaining())) {
+  			this.pos += match[0].length;
+  			return match[1] || match[0];
+  		}
+  	},
+
+  	allowWhitespace: function () {
+  		this.matchPattern(parse_Parser__leadingWhitespace);
+  	},
+
+  	remaining: function () {
+  		return this.str.substring(this.pos);
+  	},
+
+  	nextChar: function () {
+  		return this.str.charAt(this.pos);
+  	}
+  };
+
+  Parser.extend = function (proto) {
+  	var Parent = this,
+  	    Child,
+  	    key;
+
+  	Child = function (str, options) {
+  		Parser.call(this, str, options);
+  	};
+
+  	Child.prototype = create(Parent.prototype);
+
+  	for (key in proto) {
+  		if (hasOwn.call(proto, key)) {
+  			Child.prototype[key] = proto[key];
+  		}
+  	}
+
+  	Child.extend = Parser.extend;
+  	return Child;
+  };
+
+  var parse_Parser = Parser;
+
+  var TEXT = 1;
+  var INTERPOLATOR = 2;
+  var TRIPLE = 3;
+  var SECTION = 4;
+  var INVERTED = 5;
+  var CLOSING = 6;
+  var ELEMENT = 7;
+  var PARTIAL = 8;
+  var COMMENT = 9;
+  var DELIMCHANGE = 10;
+  var ATTRIBUTE = 13;
+  var CLOSING_TAG = 14;
+  var COMPONENT = 15;
+  var YIELDER = 16;
+  var INLINE_PARTIAL = 17;
+  var DOCTYPE = 18;
+
+  var NUMBER_LITERAL = 20;
+  var STRING_LITERAL = 21;
+  var ARRAY_LITERAL = 22;
+  var OBJECT_LITERAL = 23;
+  var BOOLEAN_LITERAL = 24;
+  var REGEXP_LITERAL = 25;
+
+  var GLOBAL = 26;
+  var KEY_VALUE_PAIR = 27;
+
+  var REFERENCE = 30;
+  var REFINEMENT = 31;
+  var MEMBER = 32;
+  var PREFIX_OPERATOR = 33;
+  var BRACKETED = 34;
+  var CONDITIONAL = 35;
+  var INFIX_OPERATOR = 36;
+
+  var INVOCATION = 40;
+
+  var SECTION_IF = 50;
+  var SECTION_UNLESS = 51;
+  var SECTION_EACH = 52;
+  var SECTION_WITH = 53;
+  var SECTION_IF_WITH = 54;
+
+  var ELSE = 60;
+  var ELSEIF = 61;
+
+  var stringMiddlePattern, escapeSequencePattern, lineContinuationPattern;
+
+  // Match one or more characters until: ", ', \, or EOL/EOF.
+  // EOL/EOF is written as (?!.) (meaning there's no non-newline char next).
+  stringMiddlePattern = /^(?=.)[^"'\\]+?(?:(?!.)|(?=["'\\]))/;
+
+  // Match one escape sequence, including the backslash.
+  escapeSequencePattern = /^\\(?:['"\\bfnrt]|0(?![0-9])|x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|(?=.)[^ux0-9])/;
+
+  // Match one ES5 line continuation (backslash + line terminator).
+  lineContinuationPattern = /^\\(?:\r\n|[\u000A\u000D\u2028\u2029])/;
+
+  // Helper for defining getDoubleQuotedString and getSingleQuotedString.
+  var makeQuotedStringMatcher = function (okQuote) {
+  	return function (parser) {
+  		var start, literal, done, next;
+
+  		start = parser.pos;
+  		literal = "\"";
+  		done = false;
+
+  		while (!done) {
+  			next = parser.matchPattern(stringMiddlePattern) || parser.matchPattern(escapeSequencePattern) || parser.matchString(okQuote);
+  			if (next) {
+  				if (next === "\"") {
+  					literal += "\\\"";
+  				} else if (next === "\\'") {
+  					literal += "'";
+  				} else {
+  					literal += next;
+  				}
+  			} else {
+  				next = parser.matchPattern(lineContinuationPattern);
+  				if (next) {
+  					// convert \(newline-like) into a \u escape, which is allowed in JSON
+  					literal += "\\u" + ("000" + next.charCodeAt(1).toString(16)).slice(-4);
+  				} else {
+  					done = true;
+  				}
+  			}
+  		}
+
+  		literal += "\"";
+
+  		// use JSON.parse to interpret escapes
+  		return JSON.parse(literal);
+  	};
+  };
+
+  var getSingleQuotedString = makeQuotedStringMatcher("\"");
+  var getDoubleQuotedString = makeQuotedStringMatcher("'");
+
+  var readStringLiteral = function (parser) {
+  	var start, string;
+
+  	start = parser.pos;
+
+  	if (parser.matchString("\"")) {
+  		string = getDoubleQuotedString(parser);
+
+  		if (!parser.matchString("\"")) {
+  			parser.pos = start;
+  			return null;
+  		}
+
+  		return {
+  			t: STRING_LITERAL,
+  			v: string
+  		};
+  	}
+
+  	if (parser.matchString("'")) {
+  		string = getSingleQuotedString(parser);
+
+  		if (!parser.matchString("'")) {
+  			parser.pos = start;
+  			return null;
+  		}
+
+  		return {
+  			t: STRING_LITERAL,
+  			v: string
+  		};
+  	}
+
+  	return null;
+  };
+
+  var literal_readNumberLiteral = readNumberLiteral;
+  var literal_readNumberLiteral__numberPattern = /^(?:[+-]?)0*(?:(?:(?:[1-9]\d*)?\.\d+)|(?:(?:0|[1-9]\d*)\.)|(?:0|[1-9]\d*))(?:[eE][+-]?\d+)?/;
+  function readNumberLiteral(parser) {
+  	var result;
+
+  	if (result = parser.matchPattern(literal_readNumberLiteral__numberPattern)) {
+  		return {
+  			t: NUMBER_LITERAL,
+  			v: result
+  		};
+  	}
+
+  	return null;
+  }
+
+  var patterns__name = /^[a-zA-Z_$][a-zA-Z_$0-9]*/;
+
+  // http://mathiasbynens.be/notes/javascript-properties
+  // can be any name, string literal, or number literal
+  var shared_readKey = readKey;
+  var identifier = /^[a-zA-Z_$][a-zA-Z_$0-9]*$/;
+  function readKey(parser) {
+  	var token;
+
+  	if (token = readStringLiteral(parser)) {
+  		return identifier.test(token.v) ? token.v : "\"" + token.v.replace(/"/g, "\\\"") + "\"";
+  	}
+
+  	if (token = literal_readNumberLiteral(parser)) {
+  		return token.v;
+  	}
+
+  	if (token = parser.matchPattern(patterns__name)) {
+  		return token;
+  	}
+  }
+
+  var JsonParser, specials, specialsPattern, parseJSON__numberPattern, placeholderPattern, placeholderAtStartPattern, onlyWhitespace;
+
+  specials = {
+  	"true": true,
+  	"false": false,
+  	undefined: undefined,
+  	"null": null
+  };
+
+  specialsPattern = new RegExp("^(?:" + Object.keys(specials).join("|") + ")");
+  parseJSON__numberPattern = /^(?:[+-]?)(?:(?:(?:0|[1-9]\d*)?\.\d+)|(?:(?:0|[1-9]\d*)\.)|(?:0|[1-9]\d*))(?:[eE][+-]?\d+)?/;
+  placeholderPattern = /\$\{([^\}]+)\}/g;
+  placeholderAtStartPattern = /^\$\{([^\}]+)\}/;
+  onlyWhitespace = /^\s*$/;
+
+  JsonParser = parse_Parser.extend({
+  	init: function (str, options) {
+  		this.values = options.values;
+  		this.allowWhitespace();
+  	},
+
+  	postProcess: function (resul
