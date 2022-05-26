@@ -4957,4 +4957,292 @@
   			return this.callback(getKeypath("@" + prop.prefix + getProp(this.cached, prop)));
   		}
 
-  		// special case for indices, which may cross compon
+  		// special case for indices, which may cross component boundaries
+  		if (prop.prop.indexOf("index") !== -1 || prop.prop.indexOf("key") !== -1) {
+  			while (fragment) {
+  				if (fragment.owner.currentSubtype === SECTION_EACH && (value = getProp(fragment, prop)) !== undefined) {
+  					this.cached = fragment;
+
+  					fragment.registerIndexRef(this);
+
+  					return this.callback(getKeypath("@" + prop.prefix + value));
+  				}
+
+  				// watch for component boundaries
+  				if (!fragment.parent && fragment.owner && fragment.owner.component && fragment.owner.component.parentFragment && !fragment.owner.component.instance.isolated) {
+  					fragment = fragment.owner.component.parentFragment;
+  				} else {
+  					fragment = fragment.parent;
+  				}
+  			}
+  		} else {
+  			while (fragment) {
+  				if ((value = getProp(fragment, prop)) !== undefined) {
+  					return this.callback(getKeypath("@" + prop.prefix + value.str));
+  				}
+
+  				fragment = fragment.parent;
+  			}
+  		}
+  	},
+
+  	unbind: function () {
+  		if (this.cached) {
+  			this.cached.unregisterIndexRef(this);
+  		}
+  	}
+  };
+
+  var Resolvers_SpecialResolver = SpecialResolver;
+
+  var IndexResolver = function (owner, ref, callback) {
+  	this.parentFragment = owner.parentFragment;
+  	this.ref = ref;
+  	this.callback = callback;
+
+  	ref.ref.fragment.registerIndexRef(this);
+
+  	this.rebind();
+  };
+
+  IndexResolver.prototype = {
+  	rebind: function () {
+  		var index,
+  		    ref = this.ref.ref;
+
+  		if (ref.ref.t === "k") {
+  			index = "k" + ref.fragment.key;
+  		} else {
+  			index = "i" + ref.fragment.index;
+  		}
+
+  		if (index !== undefined) {
+  			this.callback(getKeypath("@" + index));
+  		}
+  	},
+
+  	unbind: function () {
+  		this.ref.ref.fragment.unregisterIndexRef(this);
+  	}
+  };
+
+  var Resolvers_IndexResolver = IndexResolver;
+
+  var Resolvers_findIndexRefs = findIndexRefs;
+
+  function findIndexRefs(fragment, refName) {
+  	var result = {},
+  	    refs,
+  	    fragRefs,
+  	    ref,
+  	    i,
+  	    owner,
+  	    hit = false;
+
+  	if (!refName) {
+  		result.refs = refs = {};
+  	}
+
+  	while (fragment) {
+  		if ((owner = fragment.owner) && (fragRefs = owner.indexRefs)) {
+
+  			// we're looking for a particular ref, and it's here
+  			if (refName && (ref = owner.getIndexRef(refName))) {
+  				result.ref = {
+  					fragment: fragment,
+  					ref: ref
+  				};
+  				return result;
+  			}
+
+  			// we're collecting refs up-tree
+  			else if (!refName) {
+  				for (i in fragRefs) {
+  					ref = fragRefs[i];
+
+  					// don't overwrite existing refs - they should shadow parents
+  					if (!refs[ref.n]) {
+  						hit = true;
+  						refs[ref.n] = {
+  							fragment: fragment,
+  							ref: ref
+  						};
+  					}
+  				}
+  			}
+  		}
+
+  		// watch for component boundaries
+  		if (!fragment.parent && fragment.owner && fragment.owner.component && fragment.owner.component.parentFragment && !fragment.owner.component.instance.isolated) {
+  			result.componentBoundary = true;
+  			fragment = fragment.owner.component.parentFragment;
+  		} else {
+  			fragment = fragment.parent;
+  		}
+  	}
+
+  	if (!hit) {
+  		return undefined;
+  	} else {
+  		return result;
+  	}
+  }
+
+  findIndexRefs.resolve = function resolve(indices) {
+  	var refs = {},
+  	    k,
+  	    ref;
+
+  	for (k in indices.refs) {
+  		ref = indices.refs[k];
+  		refs[ref.ref.n] = ref.ref.t === "k" ? ref.fragment.key : ref.fragment.index;
+  	}
+
+  	return refs;
+  };
+
+  var Resolvers_createReferenceResolver = createReferenceResolver;
+  function createReferenceResolver(owner, ref, callback) {
+  	var indexRef;
+
+  	if (ref.charAt(0) === "@") {
+  		return new Resolvers_SpecialResolver(owner, ref, callback);
+  	}
+
+  	if (indexRef = Resolvers_findIndexRefs(owner.parentFragment, ref)) {
+  		return new Resolvers_IndexResolver(owner, indexRef, callback);
+  	}
+
+  	return new Resolvers_ReferenceResolver(owner, ref, callback);
+  }
+
+  var shared_getFunctionFromString = getFunctionFromString;
+  var cache = {};
+  function getFunctionFromString(str, i) {
+  	var fn, args;
+
+  	if (cache[str]) {
+  		return cache[str];
+  	}
+
+  	args = [];
+  	while (i--) {
+  		args[i] = "_" + i;
+  	}
+
+  	fn = new Function(args.join(","), "return(" + str + ")");
+
+  	cache[str] = fn;
+  	return fn;
+  }
+
+  var ExpressionResolver,
+      Resolvers_ExpressionResolver__bind = Function.prototype.bind;
+
+  ExpressionResolver = function (owner, parentFragment, expression, callback) {
+  	var _this = this;
+
+  	var ractive;
+
+  	ractive = owner.root;
+
+  	this.root = ractive;
+  	this.parentFragment = parentFragment;
+  	this.callback = callback;
+  	this.owner = owner;
+  	this.str = expression.s;
+  	this.keypaths = [];
+
+  	// Create resolvers for each reference
+  	this.pending = expression.r.length;
+  	this.refResolvers = expression.r.map(function (ref, i) {
+  		return Resolvers_createReferenceResolver(_this, ref, function (keypath) {
+  			_this.resolve(i, keypath);
+  		});
+  	});
+
+  	this.ready = true;
+  	this.bubble();
+  };
+
+  ExpressionResolver.prototype = {
+  	bubble: function () {
+  		if (!this.ready) {
+  			return;
+  		}
+
+  		this.uniqueString = getUniqueString(this.str, this.keypaths);
+  		this.keypath = createExpressionKeypath(this.uniqueString);
+
+  		this.createEvaluator();
+  		this.callback(this.keypath);
+  	},
+
+  	unbind: function () {
+  		var resolver;
+
+  		while (resolver = this.refResolvers.pop()) {
+  			resolver.unbind();
+  		}
+  	},
+
+  	resolve: function (index, keypath) {
+  		this.keypaths[index] = keypath;
+  		this.bubble();
+  	},
+
+  	createEvaluator: function () {
+  		var _this = this;
+
+  		var computation, valueGetters, signature, keypath, fn;
+
+  		keypath = this.keypath;
+  		computation = this.root.viewmodel.computations[keypath.str];
+
+  		// only if it doesn't exist yet!
+  		if (!computation) {
+  			fn = shared_getFunctionFromString(this.str, this.refResolvers.length);
+
+  			valueGetters = this.keypaths.map(function (keypath) {
+  				var value;
+
+  				if (keypath === "undefined") {
+  					return function () {
+  						return undefined;
+  					};
+  				}
+
+  				// 'special' keypaths encode a value
+  				if (keypath.isSpecial) {
+  					value = keypath.value;
+  					return function () {
+  						return value;
+  					};
+  				}
+
+  				return function () {
+  					var value = _this.root.viewmodel.get(keypath, { noUnwrap: true, fullRootGet: true });
+  					if (typeof value === "function") {
+  						value = wrapFunction(value, _this.root);
+  					}
+  					return value;
+  				};
+  			});
+
+  			signature = {
+  				deps: this.keypaths.filter(isValidDependency),
+  				getter: function () {
+  					var args = valueGetters.map(call);
+  					return fn.apply(null, args);
+  				}
+  			};
+
+  			computation = this.root.viewmodel.compute(keypath, signature);
+  		} else {
+  			this.root.viewmodel.mark(keypath);
+  		}
+  	},
+
+  	rebind: function (oldKeypath, newKeypath) {
+  		// TODO only bubble once, no matter how many references are affected by the rebind
+  		this.refResolvers.forEach(function (r) {
