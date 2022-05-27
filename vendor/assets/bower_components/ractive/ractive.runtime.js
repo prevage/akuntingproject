@@ -5246,3 +5246,295 @@
   	rebind: function (oldKeypath, newKeypath) {
   		// TODO only bubble once, no matter how many references are affected by the rebind
   		this.refResolvers.forEach(function (r) {
+  			return r.rebind(oldKeypath, newKeypath);
+  		});
+  	}
+  };
+
+  var Resolvers_ExpressionResolver = ExpressionResolver;
+
+  function call(value) {
+  	return value.call();
+  }
+
+  function getUniqueString(str, keypaths) {
+  	// get string that is unique to this expression
+  	return str.replace(/_([0-9]+)/g, function (match, $1) {
+  		var keypath, value;
+
+  		// make sure we're not replacing a non-keypath _[0-9]
+  		if (+$1 >= keypaths.length) {
+  			return "_" + $1;
+  		}
+
+  		keypath = keypaths[$1];
+
+  		if (keypath === undefined) {
+  			return "undefined";
+  		}
+
+  		if (keypath.isSpecial) {
+  			value = keypath.value;
+  			return typeof value === "number" ? value : "\"" + value + "\"";
+  		}
+
+  		return keypath.str;
+  	});
+  }
+
+  function createExpressionKeypath(uniqueString) {
+  	// Sanitize by removing any periods or square brackets. Otherwise
+  	// we can't split the keypath into keys!
+  	// Remove asterisks too, since they mess with pattern observers
+  	return getKeypath("${" + uniqueString.replace(/[\.\[\]]/g, "-").replace(/\*/, "#MUL#") + "}");
+  }
+
+  function isValidDependency(keypath) {
+  	return keypath !== undefined && keypath[0] !== "@";
+  }
+
+  function wrapFunction(fn, ractive) {
+  	var wrapped, prop, key;
+
+  	if (fn.__ractive_nowrap) {
+  		return fn;
+  	}
+
+  	prop = "__ractive_" + ractive._guid;
+  	wrapped = fn[prop];
+
+  	if (wrapped) {
+  		return wrapped;
+  	} else if (/this/.test(fn.toString())) {
+  		defineProperty(fn, prop, {
+  			value: Resolvers_ExpressionResolver__bind.call(fn, ractive),
+  			configurable: true
+  		});
+
+  		// Add properties/methods to wrapped function
+  		for (key in fn) {
+  			if (fn.hasOwnProperty(key)) {
+  				fn[prop][key] = fn[key];
+  			}
+  		}
+
+  		ractive._boundFunctions.push({
+  			fn: fn,
+  			prop: prop
+  		});
+
+  		return fn[prop];
+  	}
+
+  	defineProperty(fn, "__ractive_nowrap", {
+  		value: fn
+  	});
+
+  	return fn.__ractive_nowrap;
+  }
+
+  var MemberResolver = function (template, resolver, parentFragment) {
+  	var _this = this;
+
+  	this.resolver = resolver;
+  	this.root = resolver.root;
+  	this.parentFragment = parentFragment;
+  	this.viewmodel = resolver.root.viewmodel;
+
+  	if (typeof template === "string") {
+  		this.value = template;
+  	}
+
+  	// Simple reference?
+  	else if (template.t === REFERENCE) {
+  		this.refResolver = Resolvers_createReferenceResolver(this, template.n, function (keypath) {
+  			_this.resolve(keypath);
+  		});
+  	}
+
+  	// Otherwise we have an expression in its own right
+  	else {
+  		new Resolvers_ExpressionResolver(resolver, parentFragment, template, function (keypath) {
+  			_this.resolve(keypath);
+  		});
+  	}
+  };
+
+  MemberResolver.prototype = {
+  	resolve: function (keypath) {
+  		if (this.keypath) {
+  			this.viewmodel.unregister(this.keypath, this);
+  		}
+
+  		this.keypath = keypath;
+  		this.value = this.viewmodel.get(keypath);
+
+  		this.bind();
+
+  		this.resolver.bubble();
+  	},
+
+  	bind: function () {
+  		this.viewmodel.register(this.keypath, this);
+  	},
+
+  	rebind: function (oldKeypath, newKeypath) {
+  		if (this.refResolver) {
+  			this.refResolver.rebind(oldKeypath, newKeypath);
+  		}
+  	},
+
+  	setValue: function (value) {
+  		this.value = value;
+  		this.resolver.bubble();
+  	},
+
+  	unbind: function () {
+  		if (this.keypath) {
+  			this.viewmodel.unregister(this.keypath, this);
+  		}
+
+  		if (this.refResolver) {
+  			this.refResolver.unbind();
+  		}
+  	},
+
+  	forceResolution: function () {
+  		if (this.refResolver) {
+  			this.refResolver.forceResolution();
+  		}
+  	}
+  };
+
+  var ReferenceExpressionResolver_MemberResolver = MemberResolver;
+
+  var ReferenceExpressionResolver = function (mustache, template, callback) {
+  	var _this = this;
+
+  	var ractive, ref, keypath, parentFragment;
+
+  	this.parentFragment = parentFragment = mustache.parentFragment;
+  	this.root = ractive = mustache.root;
+  	this.mustache = mustache;
+
+  	this.ref = ref = template.r;
+  	this.callback = callback;
+
+  	this.unresolved = [];
+
+  	// Find base keypath
+  	if (keypath = shared_resolveRef(ractive, ref, parentFragment)) {
+  		this.base = keypath;
+  	} else {
+  		this.baseResolver = new Resolvers_ReferenceResolver(this, ref, function (keypath) {
+  			_this.base = keypath;
+  			_this.baseResolver = null;
+  			_this.bubble();
+  		});
+  	}
+
+  	// Find values for members, or mark them as unresolved
+  	this.members = template.m.map(function (template) {
+  		return new ReferenceExpressionResolver_MemberResolver(template, _this, parentFragment);
+  	});
+
+  	this.ready = true;
+  	this.bubble(); // trigger initial resolution if possible
+  };
+
+  ReferenceExpressionResolver.prototype = {
+  	getKeypath: function () {
+  		var values = this.members.map(ReferenceExpressionResolver_ReferenceExpressionResolver__getValue);
+
+  		if (!values.every(isDefined) || this.baseResolver) {
+  			return null;
+  		}
+
+  		return this.base.join(values.join("."));
+  	},
+
+  	bubble: function () {
+  		if (!this.ready || this.baseResolver) {
+  			return;
+  		}
+
+  		this.callback(this.getKeypath());
+  	},
+
+  	unbind: function () {
+  		this.members.forEach(methodCallers__unbind);
+  	},
+
+  	rebind: function (oldKeypath, newKeypath) {
+  		var changed;
+
+  		if (this.base) {
+  			var newBase = this.base.replace(oldKeypath, newKeypath);
+  			if (newBase && newBase !== this.base) {
+  				this.base = newBase;
+  				changed = true;
+  			}
+  		}
+
+  		this.members.forEach(function (members) {
+  			if (members.rebind(oldKeypath, newKeypath)) {
+  				changed = true;
+  			}
+  		});
+
+  		if (changed) {
+  			this.bubble();
+  		}
+  	},
+
+  	forceResolution: function () {
+  		if (this.baseResolver) {
+  			this.base = getKeypath(this.ref);
+
+  			this.baseResolver.unbind();
+  			this.baseResolver = null;
+  		}
+
+  		this.members.forEach(forceResolution);
+  		this.bubble();
+  	}
+  };
+
+  function ReferenceExpressionResolver_ReferenceExpressionResolver__getValue(member) {
+  	return member.value;
+  }
+
+  function isDefined(value) {
+  	return value != undefined;
+  }
+
+  function forceResolution(member) {
+  	member.forceResolution();
+  }
+
+  var ReferenceExpressionResolver_ReferenceExpressionResolver = ReferenceExpressionResolver;
+
+  var Mustache_initialise = Mustache$init;
+  function Mustache$init(mustache, options) {
+
+  	var ref, parentFragment, template;
+
+  	parentFragment = options.parentFragment;
+  	template = options.template;
+
+  	mustache.root = parentFragment.root;
+  	mustache.parentFragment = parentFragment;
+  	mustache.pElement = parentFragment.pElement;
+
+  	mustache.template = options.template;
+  	mustache.index = options.index || 0;
+  	mustache.isStatic = options.template.s;
+
+  	mustache.type = options.template.t;
+
+  	mustache.registered = false;
+
+  	// if this is a simple mustache, with a reference, we just need to resolve
+  	// the reference to a keypath
+  	if (ref = template.r) {
+  		mustache.resolver
