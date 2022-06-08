@@ -5841,4 +5841,251 @@
   			firstChange = oldIndex;
   		}
 
-  		// does this frag
+  		// does this fragment need to be torn down?
+  		if (newIndex === -1) {
+  			_this.fragmentsToUnrender.push(fragment);
+  			fragment.unbind();
+  			return;
+  		}
+
+  		// Otherwise, it needs to be rebound to a new index
+  		by = newIndex - oldIndex;
+  		oldKeypath = _this.keypath.join(oldIndex);
+  		newKeypath = _this.keypath.join(newIndex);
+
+  		fragment.index = newIndex;
+
+  		// notify any registered index refs directly
+  		if (deps = fragment.registeredIndexRefs) {
+  			deps.forEach(shuffle__blindRebind);
+  		}
+
+  		fragment.rebind(oldKeypath, newKeypath);
+  		reboundFragments[newIndex] = fragment;
+  	});
+
+  	newLength = this.root.viewmodel.get(this.keypath).length;
+
+  	// If nothing changed with the existing fragments, then we start adding
+  	// new fragments at the end...
+  	if (firstChange === undefined) {
+  		// ...unless there are no new fragments to add
+  		if (this.length === newLength) {
+  			return;
+  		}
+
+  		firstChange = this.length;
+  	}
+
+  	this.length = this.fragments.length = newLength;
+
+  	if (this.rendered) {
+  		global_runloop.addView(this);
+  	}
+
+  	// Prepare new fragment options
+  	fragmentOptions = {
+  		template: this.template.f,
+  		root: this.root,
+  		owner: this
+  	};
+
+  	// Add as many new fragments as we need to, or add back existing
+  	// (detached) fragments
+  	for (i = firstChange; i < newLength; i += 1) {
+  		fragment = reboundFragments[i];
+
+  		if (!fragment) {
+  			this.fragmentsToCreate.push(i);
+  		}
+
+  		this.fragments[i] = fragment;
+  	}
+  }
+
+  function shuffle__blindRebind(dep) {
+  	// the keypath doesn't actually matter here as it won't have changed
+  	dep.rebind("", "");
+  }
+
+  var prototype_rebind = function (oldKeypath, newKeypath) {
+  	Mustache.rebind.call(this, oldKeypath, newKeypath);
+  };
+
+  var Section_prototype_render = Section$render;
+
+  function Section$render() {
+  	var _this = this;
+
+  	this.docFrag = document.createDocumentFragment();
+
+  	this.fragments.forEach(function (f) {
+  		return _this.docFrag.appendChild(f.render());
+  	});
+
+  	this.renderedFragments = this.fragments.slice();
+  	this.fragmentsToRender = [];
+
+  	this.rendered = true;
+  	return this.docFrag;
+  }
+
+  var setValue = Section$setValue;
+
+  function Section$setValue(value) {
+  	var _this = this;
+
+  	var wrapper, fragmentOptions;
+
+  	if (this.updating) {
+  		// If a child of this section causes a re-evaluation - for example, an
+  		// expression refers to a function that mutates the array that this
+  		// section depends on - we'll end up with a double rendering bug (see
+  		// https://github.com/ractivejs/ractive/issues/748). This prevents it.
+  		return;
+  	}
+
+  	this.updating = true;
+
+  	// with sections, we need to get the fake value if we have a wrapped object
+  	if (this.keypath && (wrapper = this.root.viewmodel.wrapped[this.keypath.str])) {
+  		value = wrapper.get();
+  	}
+
+  	// If any fragments are awaiting creation after a splice,
+  	// this is the place to do it
+  	if (this.fragmentsToCreate.length) {
+  		fragmentOptions = {
+  			template: this.template.f || [],
+  			root: this.root,
+  			pElement: this.pElement,
+  			owner: this
+  		};
+
+  		this.fragmentsToCreate.forEach(function (index) {
+  			var fragment;
+
+  			fragmentOptions.context = _this.keypath.join(index);
+  			fragmentOptions.index = index;
+
+  			fragment = new virtualdom_Fragment(fragmentOptions);
+  			_this.fragmentsToRender.push(_this.fragments[index] = fragment);
+  		});
+
+  		this.fragmentsToCreate.length = 0;
+  	} else if (reevaluateSection(this, value)) {
+  		this.bubble();
+
+  		if (this.rendered) {
+  			global_runloop.addView(this);
+  		}
+  	}
+
+  	this.value = value;
+  	this.updating = false;
+  }
+
+  function changeCurrentSubtype(section, value, obj) {
+  	if (value === SECTION_EACH) {
+  		// make sure ref type is up to date for key or value indices
+  		if (section.indexRefs && section.indexRefs[0]) {
+  			var ref = section.indexRefs[0];
+
+  			// when switching flavors, make sure the section gets updated
+  			if (obj && ref.t === "i" || !obj && ref.t === "k") {
+  				// if switching from object to list, unbind all of the old fragments
+  				if (!obj) {
+  					section.length = 0;
+  					section.fragmentsToUnrender = section.fragments.slice(0);
+  					section.fragmentsToUnrender.forEach(function (f) {
+  						return f.unbind();
+  					});
+  				}
+  			}
+
+  			ref.t = obj ? "k" : "i";
+  		}
+  	}
+
+  	section.currentSubtype = value;
+  }
+
+  function reevaluateSection(section, value) {
+  	var fragmentOptions = {
+  		template: section.template.f || [],
+  		root: section.root,
+  		pElement: section.parentFragment.pElement,
+  		owner: section
+  	};
+
+  	section.hasContext = true;
+
+  	// If we already know the section type, great
+  	// TODO can this be optimised? i.e. pick an reevaluateSection function during init
+  	// and avoid doing this each time?
+  	if (section.subtype) {
+  		switch (section.subtype) {
+  			case SECTION_IF:
+  				section.hasContext = false;
+  				return reevaluateConditionalSection(section, value, false, fragmentOptions);
+
+  			case SECTION_UNLESS:
+  				section.hasContext = false;
+  				return reevaluateConditionalSection(section, value, true, fragmentOptions);
+
+  			case SECTION_WITH:
+  				return reevaluateContextSection(section, fragmentOptions);
+
+  			case SECTION_IF_WITH:
+  				return reevaluateConditionalContextSection(section, value, fragmentOptions);
+
+  			case SECTION_EACH:
+  				if (isObject(value)) {
+  					changeCurrentSubtype(section, section.subtype, true);
+  					return reevaluateListObjectSection(section, value, fragmentOptions);
+  				}
+
+  				// Fallthrough - if it's a conditional or an array we need to continue
+  		}
+  	}
+
+  	// Otherwise we need to work out what sort of section we're dealing with
+  	section.ordered = !!isArrayLike(value);
+
+  	// Ordered list section
+  	if (section.ordered) {
+  		changeCurrentSubtype(section, SECTION_EACH, false);
+  		return reevaluateListSection(section, value, fragmentOptions);
+  	}
+
+  	// Unordered list, or context
+  	if (isObject(value) || typeof value === "function") {
+  		// Index reference indicates section should be treated as a list
+  		if (section.template.i) {
+  			changeCurrentSubtype(section, SECTION_EACH, true);
+  			return reevaluateListObjectSection(section, value, fragmentOptions);
+  		}
+
+  		// Otherwise, object provides context for contents
+  		changeCurrentSubtype(section, SECTION_WITH, false);
+  		return reevaluateContextSection(section, fragmentOptions);
+  	}
+
+  	// Conditional section
+  	changeCurrentSubtype(section, SECTION_IF, false);
+  	section.hasContext = false;
+  	return reevaluateConditionalSection(section, value, false, fragmentOptions);
+  }
+
+  function reevaluateListSection(section, value, fragmentOptions) {
+  	var i, length, fragment;
+
+  	length = value.length;
+
+  	if (length === section.length) {
+  		// Nothing to do
+  		return false;
+  	}
+
+  	// if the array is shorter than it was previously, remove items
+  	i
