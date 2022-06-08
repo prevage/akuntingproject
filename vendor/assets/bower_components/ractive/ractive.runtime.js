@@ -7103,4 +7103,260 @@
   	    options,
   	    i,
   	    option,
-  	    op
+  	    optionValue;
+
+  	if (!isArray(value)) {
+  		value = [value];
+  	}
+
+  	options = this.node.options;
+  	i = options.length;
+
+  	while (i--) {
+  		option = options[i];
+  		optionValue = option._ractive ? option._ractive.value : option.value; // options inserted via a triple don't have _ractive
+  		option.selected = arrayContains(value, optionValue);
+  	}
+  }
+
+  var updateRadioName = Attribute$updateRadioName;
+
+  function Attribute$updateRadioName() {
+  	var _ref = this;
+
+  	var node = _ref.node;
+  	var value = _ref.value;
+
+  	node.checked = value == node._ractive.value;
+  }
+
+  var updateRadioValue = Attribute$updateRadioValue;
+  function Attribute$updateRadioValue() {
+  	var wasChecked,
+  	    node = this.node,
+  	    binding,
+  	    bindings,
+  	    i;
+
+  	wasChecked = node.checked;
+
+  	node.value = this.element.getAttribute("value");
+  	node.checked = this.element.getAttribute("value") === this.element.getAttribute("name");
+
+  	// This is a special case - if the input was checked, and the value
+  	// changed so that it's no longer checked, the twoway binding is
+  	// most likely out of date. To fix it we have to jump through some
+  	// hoops... this is a little kludgy but it works
+  	if (wasChecked && !node.checked && this.element.binding) {
+  		bindings = this.element.binding.siblings;
+
+  		if (i = bindings.length) {
+  			while (i--) {
+  				binding = bindings[i];
+
+  				if (!binding.element.node) {
+  					// this is the initial render, siblings are still rendering!
+  					// we'll come back later...
+  					return;
+  				}
+
+  				if (binding.element.node.checked) {
+  					global_runloop.addRactive(binding.root);
+  					return binding.handleChange();
+  				}
+  			}
+
+  			this.root.viewmodel.set(binding.keypath, undefined);
+  		}
+  	}
+  }
+
+  var updateCheckboxName = Attribute$updateCheckboxName;
+  function Attribute$updateCheckboxName() {
+  	var _ref = this;
+
+  	var element = _ref.element;
+  	var node = _ref.node;
+  	var value = _ref.value;var binding = element.binding;var valueAttribute;var i;
+
+  	valueAttribute = element.getAttribute("value");
+
+  	if (!isArray(value)) {
+  		binding.isChecked = node.checked = value == valueAttribute;
+  	} else {
+  		i = value.length;
+  		while (i--) {
+  			if (valueAttribute == value[i]) {
+  				binding.isChecked = node.checked = true;
+  				return;
+  			}
+  		}
+  		binding.isChecked = node.checked = false;
+  	}
+  }
+
+  var updateClassName = Attribute$updateClassName;
+  function Attribute$updateClassName() {
+  	this.node.className = safeToStringValue(this.value);
+  }
+
+  var updateIdAttribute = Attribute$updateIdAttribute;
+
+  function Attribute$updateIdAttribute() {
+  	var _ref = this;
+
+  	var node = _ref.node;
+  	var value = _ref.value;
+
+  	this.root.nodes[value] = node;
+  	node.id = value;
+  }
+
+  var updateIEStyleAttribute = Attribute$updateIEStyleAttribute;
+
+  function Attribute$updateIEStyleAttribute() {
+  	var node, value;
+
+  	node = this.node;
+  	value = this.value;
+
+  	if (value === undefined) {
+  		value = "";
+  	}
+
+  	node.style.setAttribute("cssText", value);
+  }
+
+  var updateContentEditableValue = Attribute$updateContentEditableValue;
+
+  function Attribute$updateContentEditableValue() {
+  	var value = this.value;
+
+  	if (value === undefined) {
+  		value = "";
+  	}
+
+  	if (!this.locked) {
+  		this.node.innerHTML = value;
+  	}
+  }
+
+  var updateValue = Attribute$updateValue;
+
+  function Attribute$updateValue() {
+  	var _ref = this;
+
+  	var node = _ref.node;
+  	var value = _ref.value;
+
+  	// store actual value, so it doesn't get coerced to a string
+  	node._ractive.value = value;
+
+  	// with two-way binding, only update if the change wasn't initiated by the user
+  	// otherwise the cursor will often be sent to the wrong place
+  	if (!this.locked) {
+  		node.value = value == undefined ? "" : value;
+  	}
+  }
+
+  var updateBoolean = Attribute$updateBooleanAttribute;
+
+  function Attribute$updateBooleanAttribute() {
+  	// with two-way binding, only update if the change wasn't initiated by the user
+  	// otherwise the cursor will often be sent to the wrong place
+  	if (!this.locked) {
+  		this.node[this.propertyName] = this.value;
+  	}
+  }
+
+  var updateEverythingElse = Attribute$updateEverythingElse;
+
+  function Attribute$updateEverythingElse() {
+  	var _ref = this;
+
+  	var node = _ref.node;
+  	var namespace = _ref.namespace;
+  	var name = _ref.name;
+  	var value = _ref.value;
+  	var fragment = _ref.fragment;
+
+  	if (namespace) {
+  		node.setAttributeNS(namespace, name, (fragment || value).toString());
+  	} else if (!this.isBoolean) {
+  		if (value == null) {
+  			node.removeAttribute(name);
+  		} else {
+  			node.setAttribute(name, (fragment || value).toString());
+  		}
+  	}
+
+  	// Boolean attributes - truthy becomes '', falsy means 'remove attribute'
+  	else {
+  		if (value) {
+  			node.setAttribute(name, "");
+  		} else {
+  			node.removeAttribute(name);
+  		}
+  	}
+  }
+
+  // There are a few special cases when it comes to updating attributes. For this reason,
+  // the prototype .update() method points to this method, which waits until the
+  // attribute has finished initialising, then replaces the prototype method with a more
+  // suitable one. That way, we save ourselves doing a bunch of tests on each call
+  var Attribute_prototype_update = Attribute$update;
+  function Attribute$update() {
+  	var _ref = this;
+
+  	var name = _ref.name;
+  	var element = _ref.element;
+  	var node = _ref.node;var type;var updateMethod;
+
+  	if (name === "id") {
+  		updateMethod = updateIdAttribute;
+  	} else if (name === "value") {
+  		// special case - selects
+  		if (element.name === "select" && name === "value") {
+  			updateMethod = element.getAttribute("multiple") ? updateMultipleSelectValue : updateSelectValue;
+  		} else if (element.name === "textarea") {
+  			updateMethod = updateValue;
+  		}
+
+  		// special case - contenteditable
+  		else if (element.getAttribute("contenteditable") != null) {
+  			updateMethod = updateContentEditableValue;
+  		}
+
+  		// special case - <input>
+  		else if (element.name === "input") {
+  			type = element.getAttribute("type");
+
+  			// type='file' value='{{fileList}}'>
+  			if (type === "file") {
+  				updateMethod = noop; // read-only
+  			}
+
+  			// type='radio' name='{{twoway}}'
+  			else if (type === "radio" && element.binding && element.binding.name === "name") {
+  				updateMethod = updateRadioValue;
+  			} else {
+  				updateMethod = updateValue;
+  			}
+  		}
+  	}
+
+  	// special case - <input type='radio' name='{{twoway}}' value='foo'>
+  	else if (this.isTwoway && name === "name") {
+  		if (node.type === "radio") {
+  			updateMethod = updateRadioName;
+  		} else if (node.type === "checkbox") {
+  			updateMethod = updateCheckboxName;
+  		}
+  	}
+
+  	// special case - style attributes in Internet Exploder
+  	else if (name === "style" && node.style.setAttribute) {
+  		updateMethod = updateIEStyleAttribute;
+  	}
+
+  	// speci
