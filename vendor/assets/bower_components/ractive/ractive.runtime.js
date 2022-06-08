@@ -6346,4 +6346,282 @@
 
   		this.docFrag.appendChild(fragment.detach());
 
-  		// update
+  		// update renderedFragments
+  		if (renderIndex !== -1) {
+  			renderedFragments.splice(renderIndex, 1);
+  		}
+  		renderedFragments.splice(i, 0, fragment);
+  	}
+
+  	if (this.rendered && this.docFrag.childNodes.length) {
+  		anchor = this.parentFragment.findNextNode(this);
+  		target.insertBefore(this.docFrag, anchor);
+  	}
+
+  	// Save the rendering order for next time
+  	this.renderedFragments = this.fragments.slice();
+  }
+
+  var Section = function (options) {
+  	this.type = SECTION;
+  	this.subtype = this.currentSubtype = options.template.n;
+  	this.inverted = this.subtype === SECTION_UNLESS;
+
+  	this.pElement = options.pElement;
+
+  	this.fragments = [];
+  	this.fragmentsToCreate = [];
+  	this.fragmentsToRender = [];
+  	this.fragmentsToUnrender = [];
+
+  	if (options.template.i) {
+  		this.indexRefs = options.template.i.split(",").map(function (k, i) {
+  			return { n: k, t: i === 0 ? "k" : "i" };
+  		});
+  	}
+
+  	this.renderedFragments = [];
+
+  	this.length = 0; // number of times this section is rendered
+
+  	Mustache.init(this, options);
+  };
+
+  Section.prototype = {
+  	bubble: Section_prototype_bubble,
+  	detach: Section_prototype_detach,
+  	find: find,
+  	findAll: findAll,
+  	findAllComponents: findAllComponents,
+  	findComponent: findComponent,
+  	findNextNode: findNextNode,
+  	firstNode: firstNode,
+  	getIndexRef: function (name) {
+  		if (this.indexRefs) {
+  			var i = this.indexRefs.length;
+  			while (i--) {
+  				var ref = this.indexRefs[i];
+  				if (ref.n === name) {
+  					return ref;
+  				}
+  			}
+  		}
+  	},
+  	getValue: Mustache.getValue,
+  	shuffle: shuffle,
+  	rebind: prototype_rebind,
+  	render: Section_prototype_render,
+  	resolve: Mustache.resolve,
+  	setValue: setValue,
+  	toString: prototype_toString,
+  	unbind: prototype_unbind,
+  	unrender: prototype_unrender,
+  	update: prototype_update
+  };
+
+  var _Section = Section;
+
+  var Triple_prototype_detach = Triple$detach;
+
+  function Triple$detach() {
+  	var len, i;
+
+  	if (this.docFrag) {
+  		len = this.nodes.length;
+  		for (i = 0; i < len; i += 1) {
+  			this.docFrag.appendChild(this.nodes[i]);
+  		}
+
+  		return this.docFrag;
+  	}
+  }
+
+  var Triple_prototype_find = Triple$find;
+  function Triple$find(selector) {
+  	var i, len, node, queryResult;
+
+  	len = this.nodes.length;
+  	for (i = 0; i < len; i += 1) {
+  		node = this.nodes[i];
+
+  		if (node.nodeType !== 1) {
+  			continue;
+  		}
+
+  		if (matches(node, selector)) {
+  			return node;
+  		}
+
+  		if (queryResult = node.querySelector(selector)) {
+  			return queryResult;
+  		}
+  	}
+
+  	return null;
+  }
+
+  var Triple_prototype_findAll = Triple$findAll;
+  function Triple$findAll(selector, queryResult) {
+  	var i, len, node, queryAllResult, numNodes, j;
+
+  	len = this.nodes.length;
+  	for (i = 0; i < len; i += 1) {
+  		node = this.nodes[i];
+
+  		if (node.nodeType !== 1) {
+  			continue;
+  		}
+
+  		if (matches(node, selector)) {
+  			queryResult.push(node);
+  		}
+
+  		if (queryAllResult = node.querySelectorAll(selector)) {
+  			numNodes = queryAllResult.length;
+  			for (j = 0; j < numNodes; j += 1) {
+  				queryResult.push(queryAllResult[j]);
+  			}
+  		}
+  	}
+  }
+
+  var Triple_prototype_firstNode = Triple$firstNode;
+
+  function Triple$firstNode() {
+  	if (this.rendered && this.nodes[0]) {
+  		return this.nodes[0];
+  	}
+
+  	return this.parentFragment.findNextNode(this);
+  }
+
+  var elementCache = {},
+      ieBug,
+      ieBlacklist;
+
+  try {
+  	createElement("table").innerHTML = "foo";
+  } catch (err) {
+  	ieBug = true;
+
+  	ieBlacklist = {
+  		TABLE: ["<table class=\"x\">", "</table>"],
+  		THEAD: ["<table><thead class=\"x\">", "</thead></table>"],
+  		TBODY: ["<table><tbody class=\"x\">", "</tbody></table>"],
+  		TR: ["<table><tr class=\"x\">", "</tr></table>"],
+  		SELECT: ["<select class=\"x\">", "</select>"]
+  	};
+  }
+
+  var insertHtml = function (html, node, docFrag) {
+  	var container,
+  	    nodes = [],
+  	    wrapper,
+  	    selectedOption,
+  	    child,
+  	    i;
+
+  	// render 0 and false
+  	if (html != null && html !== "") {
+  		if (ieBug && (wrapper = ieBlacklist[node.tagName])) {
+  			container = element("DIV");
+  			container.innerHTML = wrapper[0] + html + wrapper[1];
+  			container = container.querySelector(".x");
+
+  			if (container.tagName === "SELECT") {
+  				selectedOption = container.options[container.selectedIndex];
+  			}
+  		} else if (node.namespaceURI === namespaces.svg) {
+  			container = element("DIV");
+  			container.innerHTML = "<svg class=\"x\">" + html + "</svg>";
+  			container = container.querySelector(".x");
+  		} else {
+  			container = element(node.tagName);
+  			container.innerHTML = html;
+
+  			if (container.tagName === "SELECT") {
+  				selectedOption = container.options[container.selectedIndex];
+  			}
+  		}
+
+  		while (child = container.firstChild) {
+  			nodes.push(child);
+  			docFrag.appendChild(child);
+  		}
+
+  		// This is really annoying. Extracting <option> nodes from the
+  		// temporary container <select> causes the remaining ones to
+  		// become selected. So now we have to deselect them. IE8, you
+  		// amaze me. You really do
+  		// ...and now Chrome too
+  		if (node.tagName === "SELECT") {
+  			i = nodes.length;
+  			while (i--) {
+  				if (nodes[i] !== selectedOption) {
+  					nodes[i].selected = false;
+  				}
+  			}
+  		}
+  	}
+
+  	return nodes;
+  };
+
+  function element(tagName) {
+  	return elementCache[tagName] || (elementCache[tagName] = createElement(tagName));
+  }
+
+  var helpers_updateSelect = updateSelect;
+
+  function updateSelect(parentElement) {
+  	var selectedOptions, option, value;
+
+  	if (!parentElement || parentElement.name !== "select" || !parentElement.binding) {
+  		return;
+  	}
+
+  	selectedOptions = toArray(parentElement.node.options).filter(isSelected);
+
+  	// If one of them had a `selected` attribute, we need to sync
+  	// the model to the view
+  	if (parentElement.getAttribute("multiple")) {
+  		value = selectedOptions.map(function (o) {
+  			return o.value;
+  		});
+  	} else if (option = selectedOptions[0]) {
+  		value = option.value;
+  	}
+
+  	if (value !== undefined) {
+  		parentElement.binding.setValue(value);
+  	}
+
+  	parentElement.bubble();
+  }
+
+  function isSelected(option) {
+  	return option.selected;
+  }
+
+  var Triple_prototype_render = Triple$render;
+  function Triple$render() {
+  	if (this.rendered) {
+  		throw new Error("Attempted to render an item that was already rendered");
+  	}
+
+  	this.docFrag = document.createDocumentFragment();
+  	this.nodes = insertHtml(this.value, this.parentFragment.getNode(), this.docFrag);
+
+  	// Special case - we're inserting the contents of a <select>
+  	helpers_updateSelect(this.pElement);
+
+  	this.rendered = true;
+  	return this.docFrag;
+  }
+
+  var prototype_setValue = Triple$setValue;
+  function Triple$setValue(value) {
+  	var wrapper;
+
+  	// TODO is there a better way to approach this?
+  	if (wrapper = this.root.viewmod
