@@ -6624,4 +6624,228 @@
   	var wrapper;
 
   	// TODO is there a better way to approach this?
-  	if (wrapper = this.root.viewmod
+  	if (wrapper = this.root.viewmodel.wrapped[this.keypath.str]) {
+  		value = wrapper.get();
+  	}
+
+  	if (value !== this.value) {
+  		this.value = value;
+  		this.parentFragment.bubble();
+
+  		if (this.rendered) {
+  			global_runloop.addView(this);
+  		}
+  	}
+  }
+
+  var Triple_prototype_toString = Triple$toString;
+  function Triple$toString() {
+  	return this.value != undefined ? decodeCharacterReferences("" + this.value) : "";
+  }
+
+  var Triple_prototype_unrender = Triple$unrender;
+  function Triple$unrender(shouldDestroy) {
+  	if (this.rendered && shouldDestroy) {
+  		this.nodes.forEach(detachNode);
+  		this.rendered = false;
+  	}
+
+  	// TODO update live queries
+  }
+
+  var Triple_prototype_update = Triple$update;
+  function Triple$update() {
+  	var node, parentNode;
+
+  	if (!this.rendered) {
+  		return;
+  	}
+
+  	// Remove existing nodes
+  	while (this.nodes && this.nodes.length) {
+  		node = this.nodes.pop();
+  		node.parentNode.removeChild(node);
+  	}
+
+  	// Insert new nodes
+  	parentNode = this.parentFragment.getNode();
+
+  	this.nodes = insertHtml(this.value, parentNode, this.docFrag);
+  	parentNode.insertBefore(this.docFrag, this.parentFragment.findNextNode(this));
+
+  	// Special case - we're inserting the contents of a <select>
+  	helpers_updateSelect(this.pElement);
+  }
+
+  var Triple = function (options) {
+  	this.type = TRIPLE;
+  	Mustache.init(this, options);
+  };
+
+  Triple.prototype = {
+  	detach: Triple_prototype_detach,
+  	find: Triple_prototype_find,
+  	findAll: Triple_prototype_findAll,
+  	firstNode: Triple_prototype_firstNode,
+  	getValue: Mustache.getValue,
+  	rebind: Mustache.rebind,
+  	render: Triple_prototype_render,
+  	resolve: Mustache.resolve,
+  	setValue: prototype_setValue,
+  	toString: Triple_prototype_toString,
+  	unbind: shared_unbind,
+  	unrender: Triple_prototype_unrender,
+  	update: Triple_prototype_update
+  };
+
+  var _Triple = Triple;
+
+  var Element_prototype_bubble = function () {
+  	this.parentFragment.bubble();
+  };
+
+  var Element_prototype_detach = Element$detach;
+
+  function Element$detach() {
+  	var node = this.node,
+  	    parentNode;
+
+  	if (node) {
+  		// need to check for parent node - DOM may have been altered
+  		// by something other than Ractive! e.g. jQuery UI...
+  		if (parentNode = node.parentNode) {
+  			parentNode.removeChild(node);
+  		}
+
+  		return node;
+  	}
+  }
+
+  var Element_prototype_find = function (selector) {
+  	if (!this.node) {
+  		// this element hasn't been rendered yet
+  		return null;
+  	}
+
+  	if (matches(this.node, selector)) {
+  		return this.node;
+  	}
+
+  	if (this.fragment && this.fragment.find) {
+  		return this.fragment.find(selector);
+  	}
+  };
+
+  var Element_prototype_findAll = function (selector, query) {
+  	// Add this node to the query, if applicable, and register the
+  	// query on this element
+  	if (query._test(this, true) && query.live) {
+  		(this.liveQueries || (this.liveQueries = [])).push(query);
+  	}
+
+  	if (this.fragment) {
+  		this.fragment.findAll(selector, query);
+  	}
+  };
+
+  var Element_prototype_findAllComponents = function (selector, query) {
+  	if (this.fragment) {
+  		this.fragment.findAllComponents(selector, query);
+  	}
+  };
+
+  var Element_prototype_findComponent = function (selector) {
+  	if (this.fragment) {
+  		return this.fragment.findComponent(selector);
+  	}
+  };
+
+  var Element_prototype_findNextNode = Element$findNextNode;
+
+  function Element$findNextNode() {
+  	return null;
+  }
+
+  var Element_prototype_firstNode = Element$firstNode;
+
+  function Element$firstNode() {
+  	return this.node;
+  }
+
+  var getAttribute = Element$getAttribute;
+
+  function Element$getAttribute(name) {
+  	if (!this.attributes || !this.attributes[name]) {
+  		return;
+  	}
+
+  	return this.attributes[name].value;
+  }
+
+  var truthy = /^true|on|yes|1$/i;
+  var processBindingAttributes__isNumeric = /^[0-9]+$/;
+
+  var processBindingAttributes = function (element, template) {
+  	var val, attrs, attributes;
+
+  	attributes = template.a || {};
+  	attrs = {};
+
+  	// attributes that are present but don't have a value (=)
+  	// will be set to the number 0, which we condider to be true
+  	// the string '0', however is false
+
+  	val = attributes.twoway;
+  	if (val !== undefined) {
+  		attrs.twoway = val === 0 || truthy.test(val);
+  	}
+
+  	val = attributes.lazy;
+  	if (val !== undefined) {
+  		// check for timeout value
+  		if (val !== 0 && processBindingAttributes__isNumeric.test(val)) {
+  			attrs.lazy = parseInt(val);
+  		} else {
+  			attrs.lazy = val === 0 || truthy.test(val);
+  		}
+  	}
+
+  	return attrs;
+  };
+
+  var Attribute_prototype_bubble = Attribute$bubble;
+  function Attribute$bubble() {
+  	var value = this.useProperty || !this.rendered ? this.fragment.getValue() : this.fragment.toString();
+
+  	// TODO this can register the attribute multiple times (see render test
+  	// 'Attribute with nested mustaches')
+  	if (!isEqual(value, this.value)) {
+
+  		// Need to clear old id from ractive.nodes
+  		if (this.name === "id" && this.value) {
+  			delete this.root.nodes[this.value];
+  		}
+
+  		this.value = value;
+
+  		if (this.name === "value" && this.node) {
+  			// We need to store the value on the DOM like this so we
+  			// can retrieve it later without it being coerced to a string
+  			this.node._ractive.value = value;
+  		}
+
+  		if (this.rendered) {
+  			global_runloop.addView(this);
+  		}
+  	}
+  }
+
+  var svgCamelCaseElements, svgCamelCaseAttributes, createMap, map;
+  svgCamelCaseElements = "altGlyph altGlyphDef altGlyphItem animateColor animateMotion animateTransform clipPath feBlend feColorMatrix feComponentTransfer feComposite feConvolveMatrix feDiffuseLighting feDisplacementMap feDistantLight feFlood feFuncA feFuncB feFuncG feFuncR feGaussianBlur feImage feMerge feMergeNode feMorphology feOffset fePointLight feSpecularLighting feSpotLight feTile feTurbulence foreignObject glyphRef linearGradient radialGradient textPath vkern".split(" ");
+  svgCamelCaseAttributes = "attributeName attributeType baseFrequency baseProfile calcMode clipPathUnits contentScriptType contentStyleType diffuseConstant edgeMode externalResourcesRequired filterRes filterUnits glyphRef gradientTransform gradientUnits kernelMatrix kernelUnitLength keyPoints keySplines keyTimes lengthAdjust limitingConeAngle markerHeight markerUnits markerWidth maskContentUnits maskUnits numOctaves pathLength patternContentUnits patternTransform patternUnits pointsAtX pointsAtY pointsAtZ preserveAlpha preserveAspectRatio primitiveUnits refX refY repeatCount repeatDur requiredExtensions requiredFeatures specularConstant specularExponent spreadMethod startOffset stdDeviation stitchTiles surfaceScale systemLanguage tableValues targetX targetY textLength viewBox viewTarget xChannelSelector yChannelSelector zoomAndPan".split(" ");
+
+  createMap = function (items) {
+  	var map = {},
+  	    i = items.length;
+  	while (i--) {
+  		map[item
