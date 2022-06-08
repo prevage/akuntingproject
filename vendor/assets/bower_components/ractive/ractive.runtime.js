@@ -5537,4 +5537,308 @@
   	// if this is a simple mustache, with a reference, we just need to resolve
   	// the reference to a keypath
   	if (ref = template.r) {
-  		mustache.resolver
+  		mustache.resolver = Resolvers_createReferenceResolver(mustache, ref, resolve);
+  	}
+
+  	// if it's an expression, we have a bit more work to do
+  	if (options.template.x) {
+  		mustache.resolver = new Resolvers_ExpressionResolver(mustache, parentFragment, options.template.x, resolveAndRebindChildren);
+  	}
+
+  	if (options.template.rx) {
+  		mustache.resolver = new ReferenceExpressionResolver_ReferenceExpressionResolver(mustache, options.template.rx, resolveAndRebindChildren);
+  	}
+
+  	// Special case - inverted sections
+  	if (mustache.template.n === SECTION_UNLESS && !mustache.hasOwnProperty("value")) {
+  		mustache.setValue(undefined);
+  	}
+
+  	function resolve(keypath) {
+  		mustache.resolve(keypath);
+  	}
+
+  	function resolveAndRebindChildren(newKeypath) {
+  		var oldKeypath = mustache.keypath;
+
+  		if (newKeypath != oldKeypath) {
+  			mustache.resolve(newKeypath);
+
+  			if (oldKeypath !== undefined) {
+  				mustache.fragments && mustache.fragments.forEach(function (f) {
+  					f.rebind(oldKeypath, newKeypath);
+  				});
+  			}
+  		}
+  	}
+  }
+
+  var Mustache_resolve = Mustache$resolve;
+
+  function Mustache$resolve(keypath) {
+  	var wasResolved, value, twowayBinding;
+
+  	// 'Special' keypaths, e.g. @foo or @7, encode a value
+  	if (keypath && keypath.isSpecial) {
+  		this.keypath = keypath;
+  		this.setValue(keypath.value);
+  		return;
+  	}
+
+  	// If we resolved previously, we need to unregister
+  	if (this.registered) {
+  		// undefined or null
+  		this.root.viewmodel.unregister(this.keypath, this);
+  		this.registered = false;
+
+  		wasResolved = true;
+  	}
+
+  	this.keypath = keypath;
+
+  	// If the new keypath exists, we need to register
+  	// with the viewmodel
+  	if (keypath != undefined) {
+  		// undefined or null
+  		value = this.root.viewmodel.get(keypath);
+  		this.root.viewmodel.register(keypath, this);
+
+  		this.registered = true;
+  	}
+
+  	// Either way we need to queue up a render (`value`
+  	// will be `undefined` if there's no keypath)
+  	this.setValue(value);
+
+  	// Two-way bindings need to point to their new target keypath
+  	if (wasResolved && (twowayBinding = this.twowayBinding)) {
+  		twowayBinding.rebound();
+  	}
+  }
+
+  var Mustache_rebind = Mustache$rebind;
+
+  function Mustache$rebind(oldKeypath, newKeypath) {
+  	// Children first
+  	if (this.fragments) {
+  		this.fragments.forEach(function (f) {
+  			return f.rebind(oldKeypath, newKeypath);
+  		});
+  	}
+
+  	// Expression mustache?
+  	if (this.resolver) {
+  		this.resolver.rebind(oldKeypath, newKeypath);
+  	}
+  }
+
+  var Mustache = {
+  	getValue: Mustache_getValue,
+  	init: Mustache_initialise,
+  	resolve: Mustache_resolve,
+  	rebind: Mustache_rebind
+  };
+
+  var Interpolator = function (options) {
+  	this.type = INTERPOLATOR;
+  	Mustache.init(this, options);
+  };
+
+  Interpolator.prototype = {
+  	update: function () {
+  		this.node.data = this.value == undefined ? "" : this.value;
+  	},
+  	resolve: Mustache.resolve,
+  	rebind: Mustache.rebind,
+  	detach: shared_detach,
+
+  	unbind: shared_unbind,
+
+  	render: function () {
+  		if (!this.node) {
+  			this.node = document.createTextNode(safeToStringValue(this.value));
+  		}
+
+  		return this.node;
+  	},
+
+  	unrender: function (shouldDestroy) {
+  		if (shouldDestroy) {
+  			detachNode(this.node);
+  		}
+  	},
+
+  	getValue: Mustache.getValue,
+
+  	// TEMP
+  	setValue: function (value) {
+  		var wrapper;
+
+  		// TODO is there a better way to approach this?
+  		if (this.keypath && (wrapper = this.root.viewmodel.wrapped[this.keypath.str])) {
+  			value = wrapper.get();
+  		}
+
+  		if (!isEqual(value, this.value)) {
+  			this.value = value;
+  			this.parentFragment.bubble();
+
+  			if (this.node) {
+  				global_runloop.addView(this);
+  			}
+  		}
+  	},
+
+  	firstNode: function () {
+  		return this.node;
+  	},
+
+  	toString: function (escape) {
+  		var string = "" + safeToStringValue(this.value);
+  		return escape ? escapeHtml(string) : string;
+  	}
+  };
+
+  var items_Interpolator = Interpolator;
+
+  var Section_prototype_bubble = Section$bubble;
+
+  function Section$bubble() {
+  	this.parentFragment.bubble();
+  }
+
+  var Section_prototype_detach = Section$detach;
+
+  function Section$detach() {
+  	var docFrag;
+
+  	if (this.fragments.length === 1) {
+  		return this.fragments[0].detach();
+  	}
+
+  	docFrag = document.createDocumentFragment();
+
+  	this.fragments.forEach(function (item) {
+  		docFrag.appendChild(item.detach());
+  	});
+
+  	return docFrag;
+  }
+
+  var find = Section$find;
+
+  function Section$find(selector) {
+  	var i, len, queryResult;
+
+  	len = this.fragments.length;
+  	for (i = 0; i < len; i += 1) {
+  		if (queryResult = this.fragments[i].find(selector)) {
+  			return queryResult;
+  		}
+  	}
+
+  	return null;
+  }
+
+  var findAll = Section$findAll;
+
+  function Section$findAll(selector, query) {
+  	var i, len;
+
+  	len = this.fragments.length;
+  	for (i = 0; i < len; i += 1) {
+  		this.fragments[i].findAll(selector, query);
+  	}
+  }
+
+  var findAllComponents = Section$findAllComponents;
+
+  function Section$findAllComponents(selector, query) {
+  	var i, len;
+
+  	len = this.fragments.length;
+  	for (i = 0; i < len; i += 1) {
+  		this.fragments[i].findAllComponents(selector, query);
+  	}
+  }
+
+  var findComponent = Section$findComponent;
+
+  function Section$findComponent(selector) {
+  	var i, len, queryResult;
+
+  	len = this.fragments.length;
+  	for (i = 0; i < len; i += 1) {
+  		if (queryResult = this.fragments[i].findComponent(selector)) {
+  			return queryResult;
+  		}
+  	}
+
+  	return null;
+  }
+
+  var findNextNode = Section$findNextNode;
+
+  function Section$findNextNode(fragment) {
+  	if (this.fragments[fragment.index + 1]) {
+  		return this.fragments[fragment.index + 1].firstNode();
+  	}
+
+  	return this.parentFragment.findNextNode(this);
+  }
+
+  var firstNode = Section$firstNode;
+
+  function Section$firstNode() {
+  	var len, i, node;
+
+  	if (len = this.fragments.length) {
+  		for (i = 0; i < len; i += 1) {
+  			if (node = this.fragments[i].firstNode()) {
+  				return node;
+  			}
+  		}
+  	}
+
+  	return this.parentFragment.findNextNode(this);
+  }
+
+  var shuffle = Section$shuffle;
+
+  function Section$shuffle(newIndices) {
+  	var _this = this;
+
+  	var parentFragment, firstChange, i, newLength, reboundFragments, fragmentOptions, fragment;
+
+  	// short circuit any double-updates, and ensure that this isn't applied to
+  	// non-list sections
+  	if (this.shuffling || this.unbound || this.currentSubtype !== SECTION_EACH) {
+  		return;
+  	}
+
+  	this.shuffling = true;
+  	global_runloop.scheduleTask(function () {
+  		return _this.shuffling = false;
+  	});
+
+  	parentFragment = this.parentFragment;
+
+  	reboundFragments = [];
+
+  	// TODO: need to update this
+  	// first, rebind existing fragments
+  	newIndices.forEach(function (newIndex, oldIndex) {
+  		var fragment, by, oldKeypath, newKeypath, deps;
+
+  		if (newIndex === oldIndex) {
+  			reboundFragments[newIndex] = _this.fragments[oldIndex];
+  			return;
+  		}
+
+  		fragment = _this.fragments[oldIndex];
+
+  		if (firstChange === undefined) {
+  			firstChange = oldIndex;
+  		}
+
+  		// does this frag
