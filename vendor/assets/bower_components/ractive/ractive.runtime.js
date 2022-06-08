@@ -6848,4 +6848,259 @@
   	var map = {},
   	    i = items.length;
   	while (i--) {
-  		map[item
+  		map[items[i].toLowerCase()] = items[i];
+  	}
+  	return map;
+  };
+
+  map = createMap(svgCamelCaseElements.concat(svgCamelCaseAttributes));
+
+  var enforceCase = function (elementName) {
+  	var lowerCaseElementName = elementName.toLowerCase();
+  	return map[lowerCaseElementName] || lowerCaseElementName;
+  };
+
+  var determineNameAndNamespace = function (attribute, name) {
+  	var colonIndex, namespacePrefix;
+
+  	// are we dealing with a namespaced attribute, e.g. xlink:href?
+  	colonIndex = name.indexOf(":");
+  	if (colonIndex !== -1) {
+
+  		// looks like we are, yes...
+  		namespacePrefix = name.substr(0, colonIndex);
+
+  		// ...unless it's a namespace *declaration*, which we ignore (on the assumption
+  		// that only valid namespaces will be used)
+  		if (namespacePrefix !== "xmlns") {
+  			name = name.substring(colonIndex + 1);
+
+  			attribute.name = enforceCase(name);
+  			attribute.namespace = namespaces[namespacePrefix.toLowerCase()];
+  			attribute.namespacePrefix = namespacePrefix;
+
+  			if (!attribute.namespace) {
+  				throw "Unknown namespace (\"" + namespacePrefix + "\")";
+  			}
+
+  			return;
+  		}
+  	}
+
+  	// SVG attribute names are case sensitive
+  	attribute.name = attribute.element.namespace !== namespaces.html ? enforceCase(name) : name;
+  };
+
+  var helpers_getInterpolator = getInterpolator;
+  function getInterpolator(attribute) {
+  	var items = attribute.fragment.items;
+
+  	if (items.length !== 1) {
+  		return;
+  	}
+
+  	if (items[0].type === INTERPOLATOR) {
+  		return items[0];
+  	}
+  }
+
+  var prototype_init = Attribute$init;
+  function Attribute$init(options) {
+  	this.type = ATTRIBUTE;
+  	this.element = options.element;
+  	this.root = options.root;
+
+  	determineNameAndNamespace(this, options.name);
+  	this.isBoolean = booleanAttributes.test(this.name);
+
+  	// if it's an empty attribute, or just a straight key-value pair, with no
+  	// mustache shenanigans, set the attribute accordingly and go home
+  	if (!options.value || typeof options.value === "string") {
+  		this.value = this.isBoolean ? true : options.value || "";
+  		return;
+  	}
+
+  	// otherwise we need to do some work
+
+  	// share parentFragment with parent element
+  	this.parentFragment = this.element.parentFragment;
+
+  	this.fragment = new virtualdom_Fragment({
+  		template: options.value,
+  		root: this.root,
+  		owner: this
+  	});
+
+  	// TODO can we use this.fragment.toString() in some cases? It's quicker
+  	this.value = this.fragment.getValue();
+
+  	// Store a reference to this attribute's interpolator, if its fragment
+  	// takes the form `{{foo}}`. This is necessary for two-way binding and
+  	// for correctly rendering HTML later
+  	this.interpolator = helpers_getInterpolator(this);
+  	this.isBindable = !!this.interpolator && !this.interpolator.isStatic;
+
+  	// mark as ready
+  	this.ready = true;
+  }
+
+  var Attribute_prototype_rebind = Attribute$rebind;
+
+  function Attribute$rebind(oldKeypath, newKeypath) {
+  	if (this.fragment) {
+  		this.fragment.rebind(oldKeypath, newKeypath);
+  	}
+  }
+
+  var Attribute_prototype_render = Attribute$render;
+  var propertyNames = {
+  	"accept-charset": "acceptCharset",
+  	accesskey: "accessKey",
+  	bgcolor: "bgColor",
+  	"class": "className",
+  	codebase: "codeBase",
+  	colspan: "colSpan",
+  	contenteditable: "contentEditable",
+  	datetime: "dateTime",
+  	dirname: "dirName",
+  	"for": "htmlFor",
+  	"http-equiv": "httpEquiv",
+  	ismap: "isMap",
+  	maxlength: "maxLength",
+  	novalidate: "noValidate",
+  	pubdate: "pubDate",
+  	readonly: "readOnly",
+  	rowspan: "rowSpan",
+  	tabindex: "tabIndex",
+  	usemap: "useMap"
+  };
+  function Attribute$render(node) {
+  	var propertyName;
+
+  	this.node = node;
+
+  	// should we use direct property access, or setAttribute?
+  	if (!node.namespaceURI || node.namespaceURI === namespaces.html) {
+  		propertyName = propertyNames[this.name] || this.name;
+
+  		if (node[propertyName] !== undefined) {
+  			this.propertyName = propertyName;
+  		}
+
+  		// is attribute a boolean attribute or 'value'? If so we're better off doing e.g.
+  		// node.selected = true rather than node.setAttribute( 'selected', '' )
+  		if (this.isBoolean || this.isTwoway) {
+  			this.useProperty = true;
+  		}
+
+  		if (propertyName === "value") {
+  			node._ractive.value = this.value;
+  		}
+  	}
+
+  	this.rendered = true;
+  	this.update();
+  }
+
+  var Attribute_prototype_toString = Attribute$toString;
+
+  function Attribute$toString() {
+  	var _ref = this;
+
+  	var name = _ref.name;
+  	var namespacePrefix = _ref.namespacePrefix;
+  	var value = _ref.value;
+  	var interpolator = _ref.interpolator;
+  	var fragment = _ref.fragment;
+
+  	// Special case - select and textarea values (should not be stringified)
+  	if (name === "value" && (this.element.name === "select" || this.element.name === "textarea")) {
+  		return;
+  	}
+
+  	// Special case - content editable
+  	if (name === "value" && this.element.getAttribute("contenteditable") !== undefined) {
+  		return;
+  	}
+
+  	// Special case - radio names
+  	if (name === "name" && this.element.name === "input" && interpolator) {
+  		return "name={{" + (interpolator.keypath.str || interpolator.ref) + "}}";
+  	}
+
+  	// Boolean attributes
+  	if (this.isBoolean) {
+  		return value ? name : "";
+  	}
+
+  	if (fragment) {
+  		// special case - this catches undefined/null values (#1211)
+  		if (fragment.items.length === 1 && fragment.items[0].value == null) {
+  			return "";
+  		}
+
+  		value = fragment.toString();
+  	}
+
+  	if (namespacePrefix) {
+  		name = namespacePrefix + ":" + name;
+  	}
+
+  	return value ? name + "=\"" + Attribute_prototype_toString__escape(value) + "\"" : name;
+  }
+
+  function Attribute_prototype_toString__escape(value) {
+  	return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  var Attribute_prototype_unbind = Attribute$unbind;
+
+  function Attribute$unbind() {
+  	// ignore non-dynamic attributes
+  	if (this.fragment) {
+  		this.fragment.unbind();
+  	}
+
+  	if (this.name === "id") {
+  		delete this.root.nodes[this.value];
+  	}
+  }
+
+  var updateSelectValue = Attribute$updateSelect;
+
+  function Attribute$updateSelect() {
+  	var value = this.value,
+  	    options,
+  	    option,
+  	    optionValue,
+  	    i;
+
+  	if (!this.locked) {
+  		this.node._ractive.value = value;
+
+  		options = this.node.options;
+  		i = options.length;
+
+  		while (i--) {
+  			option = options[i];
+  			optionValue = option._ractive ? option._ractive.value : option.value; // options inserted via a triple don't have _ractive
+
+  			if (optionValue == value) {
+  				// double equals as we may be comparing numbers with strings
+  				option.selected = true;
+  				break;
+  			}
+  		}
+  	}
+
+  	// if we're still here, it means the new value didn't match any of the options...
+  	// TODO figure out what to do in this situation
+  }
+
+  var updateMultipleSelectValue = Attribute$updateMultipleSelect;
+  function Attribute$updateMultipleSelect() {
+  	var value = this.value,
+  	    options,
+  	    i,
+  	    option,
+  	    op
