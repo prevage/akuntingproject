@@ -6088,4 +6088,262 @@
   	}
 
   	// if the array is shorter than it was previously, remove items
-  	i
+  	if (length < section.length) {
+  		section.fragmentsToUnrender = section.fragments.splice(length, section.length - length);
+  		section.fragmentsToUnrender.forEach(methodCallers__unbind);
+  	}
+
+  	// otherwise...
+  	else {
+  		if (length > section.length) {
+  			// add any new ones
+  			for (i = section.length; i < length; i += 1) {
+  				// append list item to context stack
+  				fragmentOptions.context = section.keypath.join(i);
+  				fragmentOptions.index = i;
+
+  				fragment = new virtualdom_Fragment(fragmentOptions);
+  				section.fragmentsToRender.push(section.fragments[i] = fragment);
+  			}
+  		}
+  	}
+
+  	section.length = length;
+  	return true;
+  }
+
+  function reevaluateListObjectSection(section, value, fragmentOptions) {
+  	var id, i, hasKey, fragment, changed, deps;
+
+  	hasKey = section.hasKey || (section.hasKey = {});
+
+  	// remove any fragments that should no longer exist
+  	i = section.fragments.length;
+  	while (i--) {
+  		fragment = section.fragments[i];
+
+  		if (!(fragment.key in value)) {
+  			changed = true;
+
+  			fragment.unbind();
+  			section.fragmentsToUnrender.push(fragment);
+  			section.fragments.splice(i, 1);
+
+  			hasKey[fragment.key] = false;
+  		}
+  	}
+
+  	// notify any dependents about changed indices
+  	i = section.fragments.length;
+  	while (i--) {
+  		fragment = section.fragments[i];
+
+  		if (fragment.index !== i) {
+  			fragment.index = i;
+  			if (deps = fragment.registeredIndexRefs) {
+  				deps.forEach(setValue__blindRebind);
+  			}
+  		}
+  	}
+
+  	// add any that haven't been created yet
+  	i = section.fragments.length;
+  	for (id in value) {
+  		if (!hasKey[id]) {
+  			changed = true;
+
+  			fragmentOptions.context = section.keypath.join(id);
+  			fragmentOptions.key = id;
+  			fragmentOptions.index = i++;
+
+  			fragment = new virtualdom_Fragment(fragmentOptions);
+
+  			section.fragmentsToRender.push(fragment);
+  			section.fragments.push(fragment);
+  			hasKey[id] = true;
+  		}
+  	}
+
+  	section.length = section.fragments.length;
+  	return changed;
+  }
+
+  function reevaluateConditionalContextSection(section, value, fragmentOptions) {
+  	if (value) {
+  		return reevaluateContextSection(section, fragmentOptions);
+  	} else {
+  		return removeSectionFragments(section);
+  	}
+  }
+
+  function reevaluateContextSection(section, fragmentOptions) {
+  	var fragment;
+
+  	// ...then if it isn't rendered, render it, adding section.keypath to the context stack
+  	// (if it is already rendered, then any children dependent on the context stack
+  	// will update themselves without any prompting)
+  	if (!section.length) {
+  		// append this section to the context stack
+  		fragmentOptions.context = section.keypath;
+  		fragmentOptions.index = 0;
+
+  		fragment = new virtualdom_Fragment(fragmentOptions);
+
+  		section.fragmentsToRender.push(section.fragments[0] = fragment);
+  		section.length = 1;
+
+  		return true;
+  	}
+  }
+
+  function reevaluateConditionalSection(section, value, inverted, fragmentOptions) {
+  	var doRender, emptyArray, emptyObject, fragment, name;
+
+  	emptyArray = isArrayLike(value) && value.length === 0;
+  	emptyObject = false;
+  	if (!isArrayLike(value) && isObject(value)) {
+  		emptyObject = true;
+  		for (name in value) {
+  			emptyObject = false;
+  			break;
+  		}
+  	}
+
+  	if (inverted) {
+  		doRender = emptyArray || emptyObject || !value;
+  	} else {
+  		doRender = value && !emptyArray && !emptyObject;
+  	}
+
+  	if (doRender) {
+  		if (!section.length) {
+  			// no change to context stack
+  			fragmentOptions.index = 0;
+
+  			fragment = new virtualdom_Fragment(fragmentOptions);
+  			section.fragmentsToRender.push(section.fragments[0] = fragment);
+  			section.length = 1;
+
+  			return true;
+  		}
+
+  		if (section.length > 1) {
+  			section.fragmentsToUnrender = section.fragments.splice(1);
+  			section.fragmentsToUnrender.forEach(methodCallers__unbind);
+
+  			return true;
+  		}
+  	} else {
+  		return removeSectionFragments(section);
+  	}
+  }
+
+  function removeSectionFragments(section) {
+  	if (section.length) {
+  		section.fragmentsToUnrender = section.fragments.splice(0, section.fragments.length).filter(isRendered);
+  		section.fragmentsToUnrender.forEach(methodCallers__unbind);
+  		section.length = section.fragmentsToRender.length = 0;
+  		return true;
+  	}
+  }
+
+  function isRendered(fragment) {
+  	return fragment.rendered;
+  }
+
+  function setValue__blindRebind(dep) {
+  	// the keypath doesn't actually matter here as it won't have changed
+  	dep.rebind("", "");
+  }
+
+  var prototype_toString = Section$toString;
+
+  function Section$toString(escape) {
+  	var str, i, len;
+
+  	str = "";
+
+  	i = 0;
+  	len = this.length;
+
+  	for (i = 0; i < len; i += 1) {
+  		str += this.fragments[i].toString(escape);
+  	}
+
+  	return str;
+  }
+
+  var prototype_unbind = Section$unbind;
+  function Section$unbind() {
+  	var _this = this;
+
+  	this.fragments.forEach(methodCallers__unbind);
+  	this.fragmentsToRender.forEach(function (f) {
+  		return removeFromArray(_this.fragments, f);
+  	});
+  	this.fragmentsToRender = [];
+  	shared_unbind.call(this);
+
+  	this.length = 0;
+  	this.unbound = true;
+  }
+
+  var prototype_unrender = Section$unrender;
+
+  function Section$unrender(shouldDestroy) {
+  	this.fragments.forEach(shouldDestroy ? unrenderAndDestroy : prototype_unrender__unrender);
+  	this.renderedFragments = [];
+  	this.rendered = false;
+  }
+
+  function unrenderAndDestroy(fragment) {
+  	fragment.unrender(true);
+  }
+
+  function prototype_unrender__unrender(fragment) {
+  	fragment.unrender(false);
+  }
+
+  var prototype_update = Section$update;
+
+  function Section$update() {
+  	var fragment, renderIndex, renderedFragments, anchor, target, i, len;
+
+  	// `this.renderedFragments` is in the order of the previous render.
+  	// If fragments have shuffled about, this allows us to quickly
+  	// reinsert them in the correct place
+  	renderedFragments = this.renderedFragments;
+
+  	// Remove fragments that have been marked for destruction
+  	while (fragment = this.fragmentsToUnrender.pop()) {
+  		fragment.unrender(true);
+  		renderedFragments.splice(renderedFragments.indexOf(fragment), 1);
+  	}
+
+  	// Render new fragments (but don't insert them yet)
+  	while (fragment = this.fragmentsToRender.shift()) {
+  		fragment.render();
+  	}
+
+  	if (this.rendered) {
+  		target = this.parentFragment.getNode();
+  	}
+
+  	len = this.fragments.length;
+  	for (i = 0; i < len; i += 1) {
+  		fragment = this.fragments[i];
+  		renderIndex = renderedFragments.indexOf(fragment, i); // search from current index - it's guaranteed to be the same or higher
+
+  		if (renderIndex === i) {
+  			// already in the right place. insert accumulated nodes (if any) and carry on
+  			if (this.docFrag.childNodes.length) {
+  				anchor = fragment.firstNode();
+  				target.insertBefore(this.docFrag, anchor);
+  			}
+
+  			continue;
+  		}
+
+  		this.docFrag.appendChild(fragment.detach());
+
+  		// update
