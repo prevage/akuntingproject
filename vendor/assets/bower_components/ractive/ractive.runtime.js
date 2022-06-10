@@ -7359,4 +7359,263 @@
   		updateMethod = updateIEStyleAttribute;
   	}
 
-  	// speci
+  	// special case - class names. IE fucks things up, again
+  	else if (name === "class" && (!node.namespaceURI || node.namespaceURI === namespaces.html)) {
+  		updateMethod = updateClassName;
+  	} else if (this.useProperty) {
+  		updateMethod = updateBoolean;
+  	}
+
+  	if (!updateMethod) {
+  		updateMethod = updateEverythingElse;
+  	}
+
+  	this.update = updateMethod;
+  	this.update();
+  }
+
+  var Attribute = function (options) {
+  	this.init(options);
+  };
+
+  Attribute.prototype = {
+  	bubble: Attribute_prototype_bubble,
+  	init: prototype_init,
+  	rebind: Attribute_prototype_rebind,
+  	render: Attribute_prototype_render,
+  	toString: Attribute_prototype_toString,
+  	unbind: Attribute_prototype_unbind,
+  	update: Attribute_prototype_update
+  };
+
+  var _Attribute = Attribute;
+
+  var createAttributes = function (element, attributes) {
+  	var name,
+  	    attribute,
+  	    result = [];
+
+  	for (name in attributes) {
+  		// skip binding attributes
+  		if (name === "twoway" || name === "lazy") {
+  			continue;
+  		}
+
+  		if (attributes.hasOwnProperty(name)) {
+  			attribute = new _Attribute({
+  				element: element,
+  				name: name,
+  				value: attributes[name],
+  				root: element.root
+  			});
+
+  			result[name] = attribute;
+
+  			if (name !== "value") {
+  				result.push(attribute);
+  			}
+  		}
+  	}
+
+  	// value attribute goes last. This is because it
+  	// may get clamped on render otherwise, e.g. in
+  	// `<input type='range' value='999' min='0' max='1000'>`
+  	// since default max is 100
+  	if (attribute = result.value) {
+  		result.push(attribute);
+  	}
+
+  	return result;
+  };
+
+  var _ConditionalAttribute__div;
+
+  if (typeof document !== "undefined") {
+  	_ConditionalAttribute__div = createElement("div");
+  }
+
+  var ConditionalAttribute = function (element, template) {
+  	this.element = element;
+  	this.root = element.root;
+  	this.parentFragment = element.parentFragment;
+
+  	this.attributes = [];
+
+  	this.fragment = new virtualdom_Fragment({
+  		root: element.root,
+  		owner: this,
+  		template: [template]
+  	});
+  };
+
+  ConditionalAttribute.prototype = {
+  	bubble: function () {
+  		if (this.node) {
+  			this.update();
+  		}
+
+  		this.element.bubble();
+  	},
+
+  	rebind: function (oldKeypath, newKeypath) {
+  		this.fragment.rebind(oldKeypath, newKeypath);
+  	},
+
+  	render: function (node) {
+  		this.node = node;
+  		this.isSvg = node.namespaceURI === namespaces.svg;
+
+  		this.update();
+  	},
+
+  	unbind: function () {
+  		this.fragment.unbind();
+  	},
+
+  	update: function () {
+  		var _this = this;
+
+  		var str, attrs;
+
+  		str = this.fragment.toString();
+  		attrs = parseAttributes(str, this.isSvg);
+
+  		// any attributes that previously existed but no longer do
+  		// must be removed
+  		this.attributes.filter(function (a) {
+  			return notIn(attrs, a);
+  		}).forEach(function (a) {
+  			_this.node.removeAttribute(a.name);
+  		});
+
+  		attrs.forEach(function (a) {
+  			_this.node.setAttribute(a.name, a.value);
+  		});
+
+  		this.attributes = attrs;
+  	},
+
+  	toString: function () {
+  		return this.fragment.toString();
+  	}
+  };
+
+  var _ConditionalAttribute = ConditionalAttribute;
+
+  function parseAttributes(str, isSvg) {
+  	var tag = isSvg ? "svg" : "div";
+  	_ConditionalAttribute__div.innerHTML = "<" + tag + " " + str + "></" + tag + ">";
+
+  	return toArray(_ConditionalAttribute__div.childNodes[0].attributes);
+  }
+
+  function notIn(haystack, needle) {
+  	var i = haystack.length;
+
+  	while (i--) {
+  		if (haystack[i].name === needle.name) {
+  			return false;
+  		}
+  	}
+
+  	return true;
+  }
+
+  var createConditionalAttributes = function (element, attributes) {
+  	if (!attributes) {
+  		return [];
+  	}
+
+  	return attributes.map(function (a) {
+  		return new _ConditionalAttribute(element, a);
+  	});
+  };
+
+  var Binding = function (element) {
+  	var interpolator, keypath, value, parentForm;
+
+  	this.element = element;
+  	this.root = element.root;
+  	this.attribute = element.attributes[this.name || "value"];
+
+  	interpolator = this.attribute.interpolator;
+  	interpolator.twowayBinding = this;
+
+  	if (keypath = interpolator.keypath) {
+  		if (keypath.str.slice(-1) === "}") {
+  			warnOnceIfDebug("Two-way binding does not work with expressions (`%s` on <%s>)", interpolator.resolver.uniqueString, element.name, { ractive: this.root });
+  			return false;
+  		}
+
+  		if (keypath.isSpecial) {
+  			warnOnceIfDebug("Two-way binding does not work with %s", interpolator.resolver.ref, { ractive: this.root });
+  			return false;
+  		}
+  	} else {
+  		// A mustache may be *ambiguous*. Let's say we were given
+  		// `value="{{bar}}"`. If the context was `foo`, and `foo.bar`
+  		// *wasn't* `undefined`, the keypath would be `foo.bar`.
+  		// Then, any user input would result in `foo.bar` being updated.
+  		//
+  		// If, however, `foo.bar` *was* undefined, and so was `bar`, we would be
+  		// left with an unresolved partial keypath - so we are forced to make an
+  		// assumption. That assumption is that the input in question should
+  		// be forced to resolve to `bar`, and any user input would affect `bar`
+  		// and not `foo.bar`.
+  		//
+  		// Did that make any sense? No? Oh. Sorry. Well the moral of the story is
+  		// be explicit when using two-way data-binding about what keypath you're
+  		// updating. Using it in lists is probably a recipe for confusion...
+  		var ref = interpolator.template.r ? "'" + interpolator.template.r + "' reference" : "expression";
+  		warnIfDebug("The %s being used for two-way binding is ambiguous, and may cause unexpected results. Consider initialising your data to eliminate the ambiguity", ref, { ractive: this.root });
+  		interpolator.resolver.forceResolution();
+  		keypath = interpolator.keypath;
+  	}
+
+  	this.attribute.isTwoway = true;
+  	this.keypath = keypath;
+
+  	// initialise value, if it's undefined
+  	value = this.root.viewmodel.get(keypath);
+
+  	if (value === undefined && this.getInitialValue) {
+  		value = this.getInitialValue();
+
+  		if (value !== undefined) {
+  			this.root.viewmodel.set(keypath, value);
+  		}
+  	}
+
+  	if (parentForm = findParentForm(element)) {
+  		this.resetValue = value;
+  		parentForm.formBindings.push(this);
+  	}
+  };
+
+  Binding.prototype = {
+  	handleChange: function () {
+  		var _this = this;
+
+  		global_runloop.start(this.root);
+  		this.attribute.locked = true;
+  		this.root.viewmodel.set(this.keypath, this.getValue());
+  		global_runloop.scheduleTask(function () {
+  			return _this.attribute.locked = false;
+  		});
+  		global_runloop.end();
+  	},
+
+  	rebound: function () {
+  		var bindings, oldKeypath, newKeypath;
+
+  		oldKeypath = this.keypath;
+  		newKeypath = this.attribute.interpolator.keypath;
+
+  		// The attribute this binding is linked to has already done the work
+  		if (oldKeypath === newKeypath) {
+  			return;
+  		}
+
+  		removeFromArray(this.root._twowayBindings[oldKeypath.str], this);
+
+  		this.keypat
