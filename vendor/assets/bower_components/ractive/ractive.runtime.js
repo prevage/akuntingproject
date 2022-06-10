@@ -7888,4 +7888,272 @@
 
   	getInitialValue: function () {
   		// This only gets called once per group (of inputs that
-  		// share a name), because it only gets called if th
+  		// share a name), because it only gets called if there
+  		// isn't an initial value. By the same token, we can make
+  		// a note of that fact that there was no initial value,
+  		// and populate it using any `checked` attributes that
+  		// exist (which users should avoid, but which we should
+  		// support anyway to avoid breaking expectations)
+  		this.noInitialValue = true;
+  		return [];
+  	},
+
+  	init: function () {
+  		var existingValue, bindingValue;
+
+  		this.checkboxName = true; // so that ractive.updateModel() knows what to do with this
+
+  		// Each input has a reference to an array containing it and its
+  		// siblings, as two-way binding depends on being able to ascertain
+  		// the status of all inputs within the group
+  		this.siblings = shared_getSiblings(this.root._guid, "checkboxes", this.keypath.str);
+  		this.siblings.push(this);
+
+  		if (this.noInitialValue) {
+  			this.siblings.noInitialValue = true;
+  		}
+
+  		// If no initial value was set, and this input is checked, we
+  		// update the model
+  		if (this.siblings.noInitialValue && this.element.getAttribute("checked")) {
+  			existingValue = this.root.viewmodel.get(this.keypath);
+  			bindingValue = this.element.getAttribute("value");
+
+  			existingValue.push(bindingValue);
+  		}
+  	},
+
+  	unbind: function () {
+  		removeFromArray(this.siblings, this);
+  	},
+
+  	render: function () {
+  		var node = this.element.node,
+  		    existingValue,
+  		    bindingValue;
+
+  		existingValue = this.root.viewmodel.get(this.keypath);
+  		bindingValue = this.element.getAttribute("value");
+
+  		if (isArray(existingValue)) {
+  			this.isChecked = arrayContains(existingValue, bindingValue);
+  		} else {
+  			this.isChecked = existingValue == bindingValue;
+  		}
+
+  		node.name = "{{" + this.keypath.str + "}}";
+  		node.checked = this.isChecked;
+
+  		node.addEventListener("change", handleDomEvent, false);
+
+  		// in case of IE emergency, bind to click event as well
+  		if (node.attachEvent) {
+  			node.addEventListener("click", handleDomEvent, false);
+  		}
+  	},
+
+  	unrender: function () {
+  		var node = this.element.node;
+
+  		node.removeEventListener("change", handleDomEvent, false);
+  		node.removeEventListener("click", handleDomEvent, false);
+  	},
+
+  	changed: function () {
+  		var wasChecked = !!this.isChecked;
+  		this.isChecked = this.element.node.checked;
+  		return this.isChecked === wasChecked;
+  	},
+
+  	handleChange: function () {
+  		this.isChecked = this.element.node.checked;
+  		Binding_Binding.prototype.handleChange.call(this);
+  	},
+
+  	getValue: function () {
+  		return this.siblings.filter(isChecked).map(Binding_CheckboxNameBinding__getValue);
+  	}
+  });
+
+  function isChecked(binding) {
+  	return binding.isChecked;
+  }
+
+  function Binding_CheckboxNameBinding__getValue(binding) {
+  	return binding.element.getAttribute("value");
+  }
+
+  var Binding_CheckboxNameBinding = CheckboxNameBinding;
+
+  var CheckboxBinding = Binding_Binding.extend({
+  	name: "checked",
+
+  	render: function () {
+  		var node = this.element.node;
+
+  		node.addEventListener("change", handleDomEvent, false);
+
+  		if (node.attachEvent) {
+  			node.addEventListener("click", handleDomEvent, false);
+  		}
+  	},
+
+  	unrender: function () {
+  		var node = this.element.node;
+
+  		node.removeEventListener("change", handleDomEvent, false);
+  		node.removeEventListener("click", handleDomEvent, false);
+  	},
+
+  	getValue: function () {
+  		return this.element.node.checked;
+  	}
+  });
+
+  var Binding_CheckboxBinding = CheckboxBinding;
+
+  var SelectBinding = Binding_Binding.extend({
+  	getInitialValue: function () {
+  		var options = this.element.options,
+  		    len,
+  		    i,
+  		    value,
+  		    optionWasSelected;
+
+  		if (this.element.getAttribute("value") !== undefined) {
+  			return;
+  		}
+
+  		i = len = options.length;
+
+  		if (!len) {
+  			return;
+  		}
+
+  		// take the final selected option...
+  		while (i--) {
+  			if (options[i].getAttribute("selected")) {
+  				value = options[i].getAttribute("value");
+  				optionWasSelected = true;
+  				break;
+  			}
+  		}
+
+  		// or the first non-disabled option, if none are selected
+  		if (!optionWasSelected) {
+  			while (++i < len) {
+  				if (!options[i].getAttribute("disabled")) {
+  					value = options[i].getAttribute("value");
+  					break;
+  				}
+  			}
+  		}
+
+  		// This is an optimisation (aka hack) that allows us to forgo some
+  		// other more expensive work
+  		if (value !== undefined) {
+  			this.element.attributes.value.value = value;
+  		}
+
+  		return value;
+  	},
+
+  	render: function () {
+  		this.element.node.addEventListener("change", handleDomEvent, false);
+  	},
+
+  	unrender: function () {
+  		this.element.node.removeEventListener("change", handleDomEvent, false);
+  	},
+
+  	// TODO this method is an anomaly... is it necessary?
+  	setValue: function (value) {
+  		this.root.viewmodel.set(this.keypath, value);
+  	},
+
+  	getValue: function () {
+  		var options, i, len, option, optionValue;
+
+  		options = this.element.node.options;
+  		len = options.length;
+
+  		for (i = 0; i < len; i += 1) {
+  			option = options[i];
+
+  			if (options[i].selected) {
+  				optionValue = option._ractive ? option._ractive.value : option.value;
+  				return optionValue;
+  			}
+  		}
+  	},
+
+  	forceUpdate: function () {
+  		var _this = this;
+
+  		var value = this.getValue();
+
+  		if (value !== undefined) {
+  			this.attribute.locked = true;
+  			global_runloop.scheduleTask(function () {
+  				return _this.attribute.locked = false;
+  			});
+  			this.root.viewmodel.set(this.keypath, value);
+  		}
+  	}
+  });
+
+  var Binding_SelectBinding = SelectBinding;
+
+  var MultipleSelectBinding = Binding_SelectBinding.extend({
+  	getInitialValue: function () {
+  		return this.element.options.filter(function (option) {
+  			return option.getAttribute("selected");
+  		}).map(function (option) {
+  			return option.getAttribute("value");
+  		});
+  	},
+
+  	render: function () {
+  		var valueFromModel;
+
+  		this.element.node.addEventListener("change", handleDomEvent, false);
+
+  		valueFromModel = this.root.viewmodel.get(this.keypath);
+
+  		if (valueFromModel === undefined) {
+  			// get value from DOM, if possible
+  			this.handleChange();
+  		}
+  	},
+
+  	unrender: function () {
+  		this.element.node.removeEventListener("change", handleDomEvent, false);
+  	},
+
+  	setValue: function () {
+  		throw new Error("TODO not implemented yet");
+  	},
+
+  	getValue: function () {
+  		var selectedValues, options, i, len, option, optionValue;
+
+  		selectedValues = [];
+  		options = this.element.node.options;
+  		len = options.length;
+
+  		for (i = 0; i < len; i += 1) {
+  			option = options[i];
+
+  			if (option.selected) {
+  				optionValue = option._ractive ? option._ractive.value : option.value;
+  				selectedValues.push(optionValue);
+  			}
+  		}
+
+  		return selectedValues;
+  	},
+
+  	handleChange: function () {
+  		var attribute, previousValue, value;
+
+  		attribut
