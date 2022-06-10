@@ -7618,4 +7618,274 @@
 
   		removeFromArray(this.root._twowayBindings[oldKeypath.str], this);
 
-  		this.keypat
+  		this.keypath = newKeypath;
+
+  		bindings = this.root._twowayBindings[newKeypath.str] || (this.root._twowayBindings[newKeypath.str] = []);
+  		bindings.push(this);
+  	},
+
+  	unbind: function () {}
+  };
+
+  Binding.extend = function (properties) {
+  	var Parent = this,
+  	    SpecialisedBinding;
+
+  	SpecialisedBinding = function (element) {
+  		Binding.call(this, element);
+
+  		if (this.init) {
+  			this.init();
+  		}
+  	};
+
+  	SpecialisedBinding.prototype = create(Parent.prototype);
+  	utils_object__extend(SpecialisedBinding.prototype, properties);
+
+  	SpecialisedBinding.extend = Binding.extend;
+
+  	return SpecialisedBinding;
+  };
+
+  var Binding_Binding = Binding;
+
+  function findParentForm(element) {
+  	while (element = element.parent) {
+  		if (element.name === "form") {
+  			return element;
+  		}
+  	}
+  }
+
+  // this is called when the element is unbound.
+  // Specialised bindings can override it
+
+  // This is the handler for DOM events that would lead to a change in the model
+  // (i.e. change, sometimes, input, and occasionally click and keyup)
+  var handleDomEvent = handleChange;
+
+  function handleChange() {
+  	this._ractive.binding.handleChange();
+  }
+
+  var GenericBinding;
+
+  GenericBinding = Binding_Binding.extend({
+  	getInitialValue: function () {
+  		return "";
+  	},
+
+  	getValue: function () {
+  		return this.element.node.value;
+  	},
+
+  	render: function () {
+  		var node = this.element.node,
+  		    lazy,
+  		    timeout = false;
+  		this.rendered = true;
+
+  		// any lazy setting for this element overrides the root
+  		// if the value is a number, it's a timeout
+  		lazy = this.root.lazy;
+  		if (this.element.lazy === true) {
+  			lazy = true;
+  		} else if (this.element.lazy === false) {
+  			lazy = false;
+  		} else if (is__isNumeric(this.element.lazy)) {
+  			lazy = false;
+  			timeout = +this.element.lazy;
+  		} else if (is__isNumeric(lazy || "")) {
+  			timeout = +lazy;
+  			lazy = false;
+
+  			// make sure the timeout is available to the handler
+  			this.element.lazy = timeout;
+  		}
+
+  		this.handler = timeout ? handleDelay : handleDomEvent;
+
+  		node.addEventListener("change", handleDomEvent, false);
+
+  		if (!lazy) {
+  			node.addEventListener("input", this.handler, false);
+
+  			if (node.attachEvent) {
+  				node.addEventListener("keyup", this.handler, false);
+  			}
+  		}
+
+  		node.addEventListener("blur", handleBlur, false);
+  	},
+
+  	unrender: function () {
+  		var node = this.element.node;
+  		this.rendered = false;
+
+  		node.removeEventListener("change", handleDomEvent, false);
+  		node.removeEventListener("input", this.handler, false);
+  		node.removeEventListener("keyup", this.handler, false);
+  		node.removeEventListener("blur", handleBlur, false);
+  	}
+  });
+
+  var Binding_GenericBinding = GenericBinding;
+
+  function handleBlur() {
+  	var value;
+
+  	handleDomEvent.call(this);
+
+  	value = this._ractive.root.viewmodel.get(this._ractive.binding.keypath);
+  	this.value = value == undefined ? "" : value;
+  }
+
+  function handleDelay() {
+  	var binding = this._ractive.binding,
+  	    el = this;
+
+  	if (!!binding._timeout) clearTimeout(binding._timeout);
+
+  	binding._timeout = setTimeout(function () {
+  		if (binding.rendered) handleDomEvent.call(el);
+  		binding._timeout = undefined;
+  	}, binding.element.lazy);
+  }
+
+  var ContentEditableBinding = Binding_GenericBinding.extend({
+  	getInitialValue: function () {
+  		return this.element.fragment ? this.element.fragment.toString() : "";
+  	},
+
+  	getValue: function () {
+  		return this.element.node.innerHTML;
+  	}
+  });
+
+  var Binding_ContentEditableBinding = ContentEditableBinding;
+
+  var shared_getSiblings = getSiblings;
+  var sets = {};
+  function getSiblings(id, group, keypath) {
+  	var hash = id + group + keypath;
+  	return sets[hash] || (sets[hash] = []);
+  }
+
+  var RadioBinding = Binding_Binding.extend({
+  	name: "checked",
+
+  	init: function () {
+  		this.siblings = shared_getSiblings(this.root._guid, "radio", this.element.getAttribute("name"));
+  		this.siblings.push(this);
+  	},
+
+  	render: function () {
+  		var node = this.element.node;
+
+  		node.addEventListener("change", handleDomEvent, false);
+
+  		if (node.attachEvent) {
+  			node.addEventListener("click", handleDomEvent, false);
+  		}
+  	},
+
+  	unrender: function () {
+  		var node = this.element.node;
+
+  		node.removeEventListener("change", handleDomEvent, false);
+  		node.removeEventListener("click", handleDomEvent, false);
+  	},
+
+  	handleChange: function () {
+  		global_runloop.start(this.root);
+
+  		this.siblings.forEach(function (binding) {
+  			binding.root.viewmodel.set(binding.keypath, binding.getValue());
+  		});
+
+  		global_runloop.end();
+  	},
+
+  	getValue: function () {
+  		return this.element.node.checked;
+  	},
+
+  	unbind: function () {
+  		removeFromArray(this.siblings, this);
+  	}
+  });
+
+  var Binding_RadioBinding = RadioBinding;
+
+  var RadioNameBinding = Binding_Binding.extend({
+  	name: "name",
+
+  	init: function () {
+  		this.siblings = shared_getSiblings(this.root._guid, "radioname", this.keypath.str);
+  		this.siblings.push(this);
+
+  		this.radioName = true; // so that ractive.updateModel() knows what to do with this
+  	},
+
+  	getInitialValue: function () {
+  		if (this.element.getAttribute("checked")) {
+  			return this.element.getAttribute("value");
+  		}
+  	},
+
+  	render: function () {
+  		var node = this.element.node;
+
+  		node.name = "{{" + this.keypath.str + "}}";
+  		node.checked = this.root.viewmodel.get(this.keypath) == this.element.getAttribute("value");
+
+  		node.addEventListener("change", handleDomEvent, false);
+
+  		if (node.attachEvent) {
+  			node.addEventListener("click", handleDomEvent, false);
+  		}
+  	},
+
+  	unrender: function () {
+  		var node = this.element.node;
+
+  		node.removeEventListener("change", handleDomEvent, false);
+  		node.removeEventListener("click", handleDomEvent, false);
+  	},
+
+  	getValue: function () {
+  		var node = this.element.node;
+  		return node._ractive ? node._ractive.value : node.value;
+  	},
+
+  	handleChange: function () {
+  		// If this <input> is the one that's checked, then the value of its
+  		// `name` keypath gets set to its value
+  		if (this.element.node.checked) {
+  			Binding_Binding.prototype.handleChange.call(this);
+  		}
+  	},
+
+  	rebound: function (oldKeypath, newKeypath) {
+  		var node;
+
+  		Binding_Binding.prototype.rebound.call(this, oldKeypath, newKeypath);
+
+  		if (node = this.element.node) {
+  			node.name = "{{" + this.keypath.str + "}}";
+  		}
+  	},
+
+  	unbind: function () {
+  		removeFromArray(this.siblings, this);
+  	}
+  });
+
+  var Binding_RadioNameBinding = RadioNameBinding;
+
+  var CheckboxNameBinding = Binding_Binding.extend({
+  	name: "name",
+
+  	getInitialValue: function () {
+  		// This only gets called once per group (of inputs that
+  		// share a name), because it only gets called if th
