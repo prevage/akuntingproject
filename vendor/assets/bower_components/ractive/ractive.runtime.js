@@ -8408,4 +8408,303 @@
   		}
 
   		// TODO the refinements stuff would be better handled at parse time
-  		if (keypath.event
+  		if (keypath.eventObject) {
+  			value = event;
+
+  			if (len = keypath.refinements.length) {
+  				for (i = 0; i < len; i += 1) {
+  					value = value[keypath.refinements[i]];
+  				}
+  			}
+  		} else {
+  			value = ractive.viewmodel.get(keypath);
+  		}
+
+  		return value;
+  	});
+
+  	shared_eventStack.enqueue(ractive, event);
+
+  	args = this.fn.apply(null, values);
+  	ractive[this.method].apply(ractive, args);
+
+  	shared_eventStack.dequeue(ractive);
+  }
+
+  function fireEventWithParams(event) {
+  	shared_fireEvent(this.root, this.getAction(), { event: event, args: this.params });
+  }
+
+  function fireEventWithDynamicParams(event) {
+  	var args = this.dynamicParams.getArgsList();
+
+  	// need to strip [] from ends if a string!
+  	if (typeof args === "string") {
+  		args = args.substr(1, args.length - 2);
+  	}
+
+  	shared_fireEvent(this.root, this.getAction(), { event: event, args: args });
+  }
+
+  var shared_genericHandler = genericHandler;
+  function genericHandler(event) {
+  	var storage,
+  	    handler,
+  	    indices,
+  	    index = {};
+
+  	storage = this._ractive;
+  	handler = storage.events[event.type];
+
+  	if (indices = Resolvers_findIndexRefs(handler.element.parentFragment)) {
+  		index = Resolvers_findIndexRefs.resolve(indices);
+  	}
+
+  	handler.fire({
+  		node: this,
+  		original: event,
+  		index: index,
+  		keypath: storage.keypath.str,
+  		context: storage.root.viewmodel.get(storage.keypath)
+  	});
+  }
+
+  var listen = EventHandler$listen;
+
+  var customHandlers = {},
+      touchEvents = {
+  	touchstart: true,
+  	touchmove: true,
+  	touchend: true,
+  	touchcancel: true,
+  	//not w3c, but supported in some browsers
+  	touchleave: true
+  };
+  function EventHandler$listen() {
+  	var definition,
+  	    name = this.name;
+
+  	if (this.invalid) {
+  		return;
+  	}
+
+  	if (definition = findInViewHierarchy("events", this.root, name)) {
+  		this.custom = definition(this.node, getCustomHandler(name));
+  	} else {
+  		// Looks like we're dealing with a standard DOM event... but let's check
+  		if (!("on" + name in this.node) && !(window && "on" + name in window) && !isJsdom) {
+
+  			// okay to use touch events if this browser doesn't support them
+  			if (!touchEvents[name]) {
+  				warnOnceIfDebug(missingPlugin(name, "event"), { node: this.node });
+  			}
+
+  			return;
+  		}
+
+  		this.node.addEventListener(name, shared_genericHandler, false);
+  	}
+
+  	this.hasListener = true;
+  }
+
+  function getCustomHandler(name) {
+  	if (!customHandlers[name]) {
+  		customHandlers[name] = function (event) {
+  			var storage = event.node._ractive;
+
+  			event.index = storage.index;
+  			event.keypath = storage.keypath.str;
+  			event.context = storage.root.viewmodel.get(storage.keypath);
+
+  			storage.events[name].fire(event);
+  		};
+  	}
+
+  	return customHandlers[name];
+  }
+
+  var EventHandler_prototype_rebind = EventHandler$rebind;
+
+  function EventHandler$rebind(oldKeypath, newKeypath) {
+  	var fragment;
+  	if (this.method) {
+  		fragment = this.element.parentFragment;
+  		this.refResolvers.forEach(rebind);
+
+  		return;
+  	}
+
+  	if (typeof this.action !== "string") {
+  		rebind(this.action);
+  	}
+
+  	if (this.dynamicParams) {
+  		rebind(this.dynamicParams);
+  	}
+
+  	function rebind(thing) {
+  		thing && thing.rebind(oldKeypath, newKeypath);
+  	}
+  }
+
+  var EventHandler_prototype_render = EventHandler$render;
+
+  function EventHandler$render() {
+  	this.node = this.element.node;
+  	// store this on the node itself, so it can be retrieved by a
+  	// universal handler
+  	this.node._ractive.events[this.name] = this;
+
+  	if (this.method || this.getAction()) {
+  		this.listen();
+  	}
+  }
+
+  var prototype_resolve = EventHandler$resolve;
+
+  function EventHandler$resolve(index, keypath) {
+  	this.keypaths[index] = keypath;
+  }
+
+  var EventHandler_prototype_unbind = EventHandler$unbind;
+  function EventHandler$unbind() {
+  	if (this.method) {
+  		this.refResolvers.forEach(methodCallers__unbind);
+  		return;
+  	}
+
+  	// Tear down dynamic name
+  	if (typeof this.action !== "string") {
+  		this.action.unbind();
+  	}
+
+  	// Tear down dynamic parameters
+  	if (this.dynamicParams) {
+  		this.dynamicParams.unbind();
+  	}
+  }
+
+  var EventHandler_prototype_unrender = EventHandler$unrender;
+  function EventHandler$unrender() {
+
+  	if (this.custom) {
+  		this.custom.teardown();
+  	} else {
+  		this.node.removeEventListener(this.name, shared_genericHandler, false);
+  	}
+
+  	this.hasListener = false;
+  }
+
+  var EventHandler = function (element, name, template) {
+  	this.init(element, name, template);
+  };
+
+  EventHandler.prototype = {
+  	bubble: EventHandler_prototype_bubble,
+  	fire: EventHandler_prototype_fire,
+  	getAction: getAction,
+  	init: EventHandler_prototype_init,
+  	listen: listen,
+  	rebind: EventHandler_prototype_rebind,
+  	render: EventHandler_prototype_render,
+  	resolve: prototype_resolve,
+  	unbind: EventHandler_prototype_unbind,
+  	unrender: EventHandler_prototype_unrender
+  };
+
+  var _EventHandler = EventHandler;
+
+  var createEventHandlers = function (element, template) {
+  	var i,
+  	    name,
+  	    names,
+  	    handler,
+  	    result = [];
+
+  	for (name in template) {
+  		if (template.hasOwnProperty(name)) {
+  			names = name.split("-");
+  			i = names.length;
+
+  			while (i--) {
+  				handler = new _EventHandler(element, names[i], template[name]);
+  				result.push(handler);
+  			}
+  		}
+  	}
+
+  	return result;
+  };
+
+  var Decorator = function (element, template) {
+  	var self = this,
+  	    ractive,
+  	    name,
+  	    fragment;
+
+  	this.element = element;
+  	this.root = ractive = element.root;
+
+  	name = template.n || template;
+
+  	if (typeof name !== "string") {
+  		fragment = new virtualdom_Fragment({
+  			template: name,
+  			root: ractive,
+  			owner: element
+  		});
+
+  		name = fragment.toString();
+  		fragment.unbind();
+
+  		if (name === "") {
+  			// empty string okay, just no decorator
+  			return;
+  		}
+  	}
+
+  	if (template.a) {
+  		this.params = template.a;
+  	} else if (template.d) {
+  		this.fragment = new virtualdom_Fragment({
+  			template: template.d,
+  			root: ractive,
+  			owner: element
+  		});
+
+  		this.params = this.fragment.getArgsList();
+
+  		this.fragment.bubble = function () {
+  			this.dirtyArgs = this.dirtyValue = true;
+  			self.params = this.getArgsList();
+
+  			if (self.ready) {
+  				self.update();
+  			}
+  		};
+  	}
+
+  	this.fn = findInViewHierarchy("decorators", ractive, name);
+
+  	if (!this.fn) {
+  		fatal(missingPlugin(name, "decorator"));
+  	}
+  };
+
+  Decorator.prototype = {
+  	init: function () {
+  		var node, result, args;
+
+  		node = this.element.node;
+
+  		if (this.params) {
+  			args = [node].concat(this.params);
+  			result = this.fn.apply(this.root, args);
+  		} else {
+  			result = this.fn.call(this.root, node);
+  		}
+
+  		if (!result || !result.teardown) {
+  			throw new E
