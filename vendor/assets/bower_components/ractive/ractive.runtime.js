@@ -8156,4 +8156,256 @@
   	handleChange: function () {
   		var attribute, previousValue, value;
 
-  		attribut
+  		attribute = this.attribute;
+  		previousValue = attribute.value;
+
+  		value = this.getValue();
+
+  		if (previousValue === undefined || !arrayContentsMatch(value, previousValue)) {
+  			Binding_SelectBinding.prototype.handleChange.call(this);
+  		}
+
+  		return this;
+  	},
+
+  	forceUpdate: function () {
+  		var _this = this;
+
+  		var value = this.getValue();
+
+  		if (value !== undefined) {
+  			this.attribute.locked = true;
+  			global_runloop.scheduleTask(function () {
+  				return _this.attribute.locked = false;
+  			});
+  			this.root.viewmodel.set(this.keypath, value);
+  		}
+  	},
+
+  	updateModel: function () {
+  		if (this.attribute.value === undefined || !this.attribute.value.length) {
+  			this.root.viewmodel.set(this.keypath, this.initialValue);
+  		}
+  	}
+  });
+
+  var Binding_MultipleSelectBinding = MultipleSelectBinding;
+
+  var FileListBinding = Binding_Binding.extend({
+  	render: function () {
+  		this.element.node.addEventListener("change", handleDomEvent, false);
+  	},
+
+  	unrender: function () {
+  		this.element.node.removeEventListener("change", handleDomEvent, false);
+  	},
+
+  	getValue: function () {
+  		return this.element.node.files;
+  	}
+  });
+
+  var Binding_FileListBinding = FileListBinding;
+
+  var NumericBinding = Binding_GenericBinding.extend({
+  	getInitialValue: function () {
+  		return undefined;
+  	},
+
+  	getValue: function () {
+  		var value = parseFloat(this.element.node.value);
+  		return isNaN(value) ? undefined : value;
+  	}
+  });
+
+  var init_createTwowayBinding = createTwowayBinding;
+
+  function createTwowayBinding(element) {
+  	var attributes = element.attributes,
+  	    type,
+  	    Binding,
+  	    bindName,
+  	    bindChecked,
+  	    binding;
+
+  	// if this is a late binding, and there's already one, it
+  	// needs to be torn down
+  	if (element.binding) {
+  		element.binding.teardown();
+  		element.binding = null;
+  	}
+
+  	// contenteditable
+  	if (
+  	// if the contenteditable attribute is true or is bindable and may thus become true
+  	(element.getAttribute("contenteditable") || !!attributes.contenteditable && isBindable(attributes.contenteditable)) && isBindable(attributes.value)) {
+  		Binding = Binding_ContentEditableBinding;
+  	}
+
+  	// <input>
+  	else if (element.name === "input") {
+  		type = element.getAttribute("type");
+
+  		if (type === "radio" || type === "checkbox") {
+  			bindName = isBindable(attributes.name);
+  			bindChecked = isBindable(attributes.checked);
+
+  			// we can either bind the name attribute, or the checked attribute - not both
+  			if (bindName && bindChecked) {
+  				warnIfDebug("A radio input can have two-way binding on its name attribute, or its checked attribute - not both", { ractive: element.root });
+  			}
+
+  			if (bindName) {
+  				Binding = type === "radio" ? Binding_RadioNameBinding : Binding_CheckboxNameBinding;
+  			} else if (bindChecked) {
+  				Binding = type === "radio" ? Binding_RadioBinding : Binding_CheckboxBinding;
+  			}
+  		} else if (type === "file" && isBindable(attributes.value)) {
+  			Binding = Binding_FileListBinding;
+  		} else if (isBindable(attributes.value)) {
+  			Binding = type === "number" || type === "range" ? NumericBinding : Binding_GenericBinding;
+  		}
+  	}
+
+  	// <select>
+  	else if (element.name === "select" && isBindable(attributes.value)) {
+  		Binding = element.getAttribute("multiple") ? Binding_MultipleSelectBinding : Binding_SelectBinding;
+  	}
+
+  	// <textarea>
+  	else if (element.name === "textarea" && isBindable(attributes.value)) {
+  		Binding = Binding_GenericBinding;
+  	}
+
+  	if (Binding && (binding = new Binding(element)) && binding.keypath) {
+  		return binding;
+  	}
+  }
+
+  function isBindable(attribute) {
+  	return attribute && attribute.isBindable;
+  }
+
+  // and this element also has a value attribute to bind
+
+  var EventHandler_prototype_bubble = EventHandler$bubble;
+
+  function EventHandler$bubble() {
+  	var hasAction = this.getAction();
+
+  	if (hasAction && !this.hasListener) {
+  		this.listen();
+  	} else if (!hasAction && this.hasListener) {
+  		this.unrender();
+  	}
+  }
+
+  // This function may be overwritten, if the event directive
+  // includes parameters
+  var EventHandler_prototype_fire = EventHandler$fire;
+  function EventHandler$fire(event) {
+  	shared_fireEvent(this.root, this.getAction(), { event: event });
+  }
+
+  var getAction = EventHandler$getAction;
+
+  function EventHandler$getAction() {
+  	return this.action.toString().trim();
+  }
+
+  var EventHandler_prototype_init = EventHandler$init;
+
+  var eventPattern = /^event(?:\.(.+))?/;
+  function EventHandler$init(element, name, template) {
+  	var _this = this;
+
+  	var action, refs, ractive;
+
+  	this.element = element;
+  	this.root = element.root;
+  	this.parentFragment = element.parentFragment;
+  	this.name = name;
+
+  	if (name.indexOf("*") !== -1) {
+  		fatal("Only component proxy-events may contain \"*\" wildcards, <%s on-%s=\"...\"/> is not valid", element.name, name);
+  		this.invalid = true;
+  	}
+
+  	if (template.m) {
+  		refs = template.a.r;
+
+  		// This is a method call
+  		this.method = template.m;
+  		this.keypaths = [];
+  		this.fn = shared_getFunctionFromString(template.a.s, refs.length);
+
+  		this.parentFragment = element.parentFragment;
+  		ractive = this.root;
+
+  		// Create resolvers for each reference
+  		this.refResolvers = [];
+  		refs.forEach(function (ref, i) {
+  			var match = undefined;
+
+  			// special case - the `event` object
+  			if (match = eventPattern.exec(ref)) {
+  				_this.keypaths[i] = {
+  					eventObject: true,
+  					refinements: match[1] ? match[1].split(".") : []
+  				};
+  			} else {
+  				_this.refResolvers.push(Resolvers_createReferenceResolver(_this, ref, function (keypath) {
+  					return _this.resolve(i, keypath);
+  				}));
+  			}
+  		});
+
+  		this.fire = fireMethodCall;
+  	} else {
+  		// Get action ('foo' in 'on-click='foo')
+  		action = template.n || template;
+  		if (typeof action !== "string") {
+  			action = new virtualdom_Fragment({
+  				template: action,
+  				root: this.root,
+  				owner: this
+  			});
+  		}
+
+  		this.action = action;
+
+  		// Get parameters
+  		if (template.d) {
+  			this.dynamicParams = new virtualdom_Fragment({
+  				template: template.d,
+  				root: this.root,
+  				owner: this.element
+  			});
+
+  			this.fire = fireEventWithDynamicParams;
+  		} else if (template.a) {
+  			this.params = template.a;
+  			this.fire = fireEventWithParams;
+  		}
+  	}
+  }
+
+  function fireMethodCall(event) {
+  	var ractive, values, args;
+
+  	ractive = this.root;
+
+  	if (typeof ractive[this.method] !== "function") {
+  		throw new Error("Attempted to call a non-existent method (\"" + this.method + "\")");
+  	}
+
+  	values = this.keypaths.map(function (keypath) {
+  		var value, len, i;
+
+  		if (keypath === undefined) {
+  			// not yet resolved
+  			return undefined;
+  		}
+
+  		// TODO the refinements stuff would be better handled at parse time
+  		if (keypath.event
