@@ -8707,4 +8707,291 @@
   		}
 
   		if (!result || !result.teardown) {
-  			throw new E
+  			throw new Error("Decorator definition must return an object with a teardown method");
+  		}
+
+  		// TODO does this make sense?
+  		this.actual = result;
+  		this.ready = true;
+  	},
+
+  	update: function () {
+  		if (this.actual.update) {
+  			this.actual.update.apply(this.root, this.params);
+  		} else {
+  			this.actual.teardown(true);
+  			this.init();
+  		}
+  	},
+
+  	rebind: function (oldKeypath, newKeypath) {
+  		if (this.fragment) {
+  			this.fragment.rebind(oldKeypath, newKeypath);
+  		}
+  	},
+
+  	teardown: function (updating) {
+  		this.torndown = true;
+  		if (this.ready) {
+  			this.actual.teardown();
+  		}
+
+  		if (!updating && this.fragment) {
+  			this.fragment.unbind();
+  		}
+  	}
+  };
+
+  var _Decorator = Decorator;
+
+  function select__bubble() {
+  	var _this = this;
+
+  	if (!this.dirty) {
+  		this.dirty = true;
+
+  		global_runloop.scheduleTask(function () {
+  			sync(_this);
+  			_this.dirty = false;
+  		});
+  	}
+
+  	this.parentFragment.bubble(); // default behaviour
+  }
+
+  function sync(selectElement) {
+  	var selectNode, selectValue, isMultiple, options, optionWasSelected;
+
+  	selectNode = selectElement.node;
+
+  	if (!selectNode) {
+  		return;
+  	}
+
+  	options = toArray(selectNode.options);
+
+  	selectValue = selectElement.getAttribute("value");
+  	isMultiple = selectElement.getAttribute("multiple");
+
+  	// If the <select> has a specified value, that should override
+  	// these options
+  	if (selectValue !== undefined) {
+  		options.forEach(function (o) {
+  			var optionValue, shouldSelect;
+
+  			optionValue = o._ractive ? o._ractive.value : o.value;
+  			shouldSelect = isMultiple ? valueContains(selectValue, optionValue) : selectValue == optionValue;
+
+  			if (shouldSelect) {
+  				optionWasSelected = true;
+  			}
+
+  			o.selected = shouldSelect;
+  		});
+
+  		if (!optionWasSelected) {
+  			if (options[0]) {
+  				options[0].selected = true;
+  			}
+
+  			if (selectElement.binding) {
+  				selectElement.binding.forceUpdate();
+  			}
+  		}
+  	}
+
+  	// Otherwise the value should be initialised according to which
+  	// <option> element is selected, if twoway binding is in effect
+  	else if (selectElement.binding) {
+  		selectElement.binding.forceUpdate();
+  	}
+  }
+
+  function valueContains(selectValue, optionValue) {
+  	var i = selectValue.length;
+  	while (i--) {
+  		if (selectValue[i] == optionValue) {
+  			return true;
+  		}
+  	}
+  }
+
+  function special_option__init(option, template) {
+  	option.select = findParentSelect(option.parent);
+
+  	// we might be inside a <datalist> element
+  	if (!option.select) {
+  		return;
+  	}
+
+  	option.select.options.push(option);
+
+  	// If the value attribute is missing, use the element's content
+  	if (!template.a) {
+  		template.a = {};
+  	}
+
+  	// ...as long as it isn't disabled
+  	if (template.a.value === undefined && !template.a.hasOwnProperty("disabled")) {
+  		template.a.value = template.f;
+  	}
+
+  	// If there is a `selected` attribute, but the <select>
+  	// already has a value, delete it
+  	if ("selected" in template.a && option.select.getAttribute("value") !== undefined) {
+  		delete template.a.selected;
+  	}
+  }
+
+  function special_option__unbind(option) {
+  	if (option.select) {
+  		removeFromArray(option.select.options, option);
+  	}
+  }
+
+  function findParentSelect(element) {
+  	if (!element) {
+  		return;
+  	}
+
+  	do {
+  		if (element.name === "select") {
+  			return element;
+  		}
+  	} while (element = element.parent);
+  }
+
+  var Element_prototype_init = Element$init;
+  function Element$init(options) {
+  	var parentFragment, template, ractive, binding, bindings, twoway, bindingAttrs;
+
+  	this.type = ELEMENT;
+
+  	// stuff we'll need later
+  	parentFragment = this.parentFragment = options.parentFragment;
+  	template = this.template = options.template;
+
+  	this.parent = options.pElement || parentFragment.pElement;
+
+  	this.root = ractive = parentFragment.root;
+  	this.index = options.index;
+  	this.key = options.key;
+
+  	this.name = enforceCase(template.e);
+
+  	// Special case - <option> elements
+  	if (this.name === "option") {
+  		special_option__init(this, template);
+  	}
+
+  	// Special case - <select> elements
+  	if (this.name === "select") {
+  		this.options = [];
+  		this.bubble = select__bubble; // TODO this is a kludge
+  	}
+
+  	// Special case - <form> elements
+  	if (this.name === "form") {
+  		this.formBindings = [];
+  	}
+
+  	// handle binding attributes first (twoway, lazy)
+  	bindingAttrs = processBindingAttributes(this, template);
+
+  	// create attributes
+  	this.attributes = createAttributes(this, template.a);
+  	this.conditionalAttributes = createConditionalAttributes(this, template.m);
+
+  	// append children, if there are any
+  	if (template.f) {
+  		this.fragment = new virtualdom_Fragment({
+  			template: template.f,
+  			root: ractive,
+  			owner: this,
+  			pElement: this,
+  			cssIds: null
+  		});
+  	}
+
+  	// the element setting should override the ractive setting
+  	twoway = ractive.twoway;
+  	if (bindingAttrs.twoway === false) twoway = false;else if (bindingAttrs.twoway === true) twoway = true;
+
+  	this.twoway = twoway;
+  	this.lazy = bindingAttrs.lazy;
+
+  	// create twoway binding
+  	if (twoway && (binding = init_createTwowayBinding(this, template.a))) {
+  		this.binding = binding;
+
+  		// register this with the root, so that we can do ractive.updateModel()
+  		bindings = this.root._twowayBindings[binding.keypath.str] || (this.root._twowayBindings[binding.keypath.str] = []);
+  		bindings.push(binding);
+  	}
+
+  	// create event proxies
+  	if (template.v) {
+  		this.eventHandlers = createEventHandlers(this, template.v);
+  	}
+
+  	// create decorator
+  	if (template.o) {
+  		this.decorator = new _Decorator(this, template.o);
+  	}
+
+  	// create transitions
+  	this.intro = template.t0 || template.t1;
+  	this.outro = template.t0 || template.t2;
+  }
+
+  var Element_prototype_rebind = Element$rebind;
+  function Element$rebind(oldKeypath, newKeypath) {
+  	var i, storage, liveQueries, ractive;
+
+  	if (this.attributes) {
+  		this.attributes.forEach(rebind);
+  	}
+
+  	if (this.conditionalAttributes) {
+  		this.conditionalAttributes.forEach(rebind);
+  	}
+
+  	if (this.eventHandlers) {
+  		this.eventHandlers.forEach(rebind);
+  	}
+
+  	if (this.decorator) {
+  		rebind(this.decorator);
+  	}
+
+  	// rebind children
+  	if (this.fragment) {
+  		rebind(this.fragment);
+  	}
+
+  	// Update live queries, if necessary
+  	if (liveQueries = this.liveQueries) {
+  		ractive = this.root;
+
+  		i = liveQueries.length;
+  		while (i--) {
+  			liveQueries[i]._makeDirty();
+  		}
+  	}
+
+  	if (this.node && (storage = this.node._ractive)) {
+
+  		// adjust keypath if needed
+  		assignNewKeypath(storage, "keypath", oldKeypath, newKeypath);
+  	}
+
+  	function rebind(thing) {
+  		thing.rebind(oldKeypath, newKeypath);
+  	}
+  }
+
+  function special_img__render(img) {
+  	var loadHandler;
+
+  	// if this is an <img>, and we're in a crap browser, we may need to prevent it
+  	// from
