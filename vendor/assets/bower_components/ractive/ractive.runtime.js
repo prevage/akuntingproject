@@ -8994,4 +8994,314 @@
   	var loadHandler;
 
   	// if this is an <img>, and we're in a crap browser, we may need to prevent it
-  	// from
+  	// from overriding width and height when it loads the src
+  	if (img.attributes.width || img.attributes.height) {
+  		img.node.addEventListener("load", loadHandler = function () {
+  			var width = img.getAttribute("width"),
+  			    height = img.getAttribute("height");
+
+  			if (width !== undefined) {
+  				img.node.setAttribute("width", width);
+  			}
+
+  			if (height !== undefined) {
+  				img.node.setAttribute("height", height);
+  			}
+
+  			img.node.removeEventListener("load", loadHandler, false);
+  		}, false);
+  	}
+  }
+
+  function form__render(element) {
+  	element.node.addEventListener("reset", handleReset, false);
+  }
+
+  function form__unrender(element) {
+  	element.node.removeEventListener("reset", handleReset, false);
+  }
+
+  function handleReset() {
+  	var element = this._ractive.proxy;
+
+  	global_runloop.start();
+  	element.formBindings.forEach(updateModel);
+  	global_runloop.end();
+  }
+
+  function updateModel(binding) {
+  	binding.root.viewmodel.set(binding.keypath, binding.resetValue);
+  }
+
+  var Transition_prototype_init = Transition$init;
+  function Transition$init(element, template, isIntro) {
+  	var ractive, name, fragment;
+
+  	this.element = element;
+  	this.root = ractive = element.root;
+  	this.isIntro = isIntro;
+
+  	name = template.n || template;
+
+  	if (typeof name !== "string") {
+  		fragment = new virtualdom_Fragment({
+  			template: name,
+  			root: ractive,
+  			owner: element
+  		});
+
+  		name = fragment.toString();
+  		fragment.unbind();
+
+  		if (name === "") {
+  			// empty string okay, just no transition
+  			return;
+  		}
+  	}
+
+  	this.name = name;
+
+  	if (template.a) {
+  		this.params = template.a;
+  	} else if (template.d) {
+  		// TODO is there a way to interpret dynamic arguments without all the
+  		// 'dependency thrashing'?
+  		fragment = new virtualdom_Fragment({
+  			template: template.d,
+  			root: ractive,
+  			owner: element
+  		});
+
+  		this.params = fragment.getArgsList();
+  		fragment.unbind();
+  	}
+
+  	this._fn = findInViewHierarchy("transitions", ractive, name);
+
+  	if (!this._fn) {
+  		warnOnceIfDebug(missingPlugin(name, "transition"), { ractive: this.root });
+  	}
+  }
+
+  var camelCase = function (hyphenatedStr) {
+  	return hyphenatedStr.replace(/-([a-zA-Z])/g, function (match, $1) {
+  		return $1.toUpperCase();
+  	});
+  };
+
+  var helpers_prefix__prefix, prefixCache, helpers_prefix__testStyle;
+
+  if (!isClient) {
+  	helpers_prefix__prefix = null;
+  } else {
+  	prefixCache = {};
+  	helpers_prefix__testStyle = createElement("div").style;
+
+  	helpers_prefix__prefix = function (prop) {
+  		var i, vendor, capped;
+
+  		prop = camelCase(prop);
+
+  		if (!prefixCache[prop]) {
+  			if (helpers_prefix__testStyle[prop] !== undefined) {
+  				prefixCache[prop] = prop;
+  			} else {
+  				// test vendors...
+  				capped = prop.charAt(0).toUpperCase() + prop.substring(1);
+
+  				i = vendors.length;
+  				while (i--) {
+  					vendor = vendors[i];
+  					if (helpers_prefix__testStyle[vendor + capped] !== undefined) {
+  						prefixCache[prop] = vendor + capped;
+  						break;
+  					}
+  				}
+  			}
+  		}
+
+  		return prefixCache[prop];
+  	};
+  }
+
+  var helpers_prefix = helpers_prefix__prefix;
+
+  var getStyle, prototype_getStyle__getComputedStyle;
+
+  if (!isClient) {
+  	getStyle = null;
+  } else {
+  	prototype_getStyle__getComputedStyle = window.getComputedStyle || legacy.getComputedStyle;
+
+  	getStyle = function (props) {
+  		var computedStyle, styles, i, prop, value;
+
+  		computedStyle = prototype_getStyle__getComputedStyle(this.node);
+
+  		if (typeof props === "string") {
+  			value = computedStyle[helpers_prefix(props)];
+  			if (value === "0px") {
+  				value = 0;
+  			}
+  			return value;
+  		}
+
+  		if (!isArray(props)) {
+  			throw new Error("Transition$getStyle must be passed a string, or an array of strings representing CSS properties");
+  		}
+
+  		styles = {};
+
+  		i = props.length;
+  		while (i--) {
+  			prop = props[i];
+  			value = computedStyle[helpers_prefix(prop)];
+  			if (value === "0px") {
+  				value = 0;
+  			}
+  			styles[prop] = value;
+  		}
+
+  		return styles;
+  	};
+  }
+
+  var prototype_getStyle = getStyle;
+
+  var setStyle = function (style, value) {
+  	var prop;
+
+  	if (typeof style === "string") {
+  		this.node.style[helpers_prefix(style)] = value;
+  	} else {
+  		for (prop in style) {
+  			if (style.hasOwnProperty(prop)) {
+  				this.node.style[helpers_prefix(prop)] = style[prop];
+  			}
+  		}
+  	}
+
+  	return this;
+  };
+
+  var Ticker = function (options) {
+  	var easing;
+
+  	this.duration = options.duration;
+  	this.step = options.step;
+  	this.complete = options.complete;
+
+  	// easing
+  	if (typeof options.easing === "string") {
+  		easing = options.root.easing[options.easing];
+
+  		if (!easing) {
+  			warnOnceIfDebug(missingPlugin(options.easing, "easing"));
+  			easing = linear;
+  		}
+  	} else if (typeof options.easing === "function") {
+  		easing = options.easing;
+  	} else {
+  		easing = linear;
+  	}
+
+  	this.easing = easing;
+
+  	this.start = utils_getTime();
+  	this.end = this.start + this.duration;
+
+  	this.running = true;
+  	shared_animations.add(this);
+  };
+
+  Ticker.prototype = {
+  	tick: function (now) {
+  		var elapsed, eased;
+
+  		if (!this.running) {
+  			return false;
+  		}
+
+  		if (now > this.end) {
+  			if (this.step) {
+  				this.step(1);
+  			}
+
+  			if (this.complete) {
+  				this.complete(1);
+  			}
+
+  			return false;
+  		}
+
+  		elapsed = now - this.start;
+  		eased = this.easing(elapsed / this.duration);
+
+  		if (this.step) {
+  			this.step(eased);
+  		}
+
+  		return true;
+  	},
+
+  	stop: function () {
+  		if (this.abort) {
+  			this.abort();
+  		}
+
+  		this.running = false;
+  	}
+  };
+
+  var shared_Ticker = Ticker;
+  function linear(t) {
+  	return t;
+  }
+
+  var unprefixPattern = new RegExp("^-(?:" + vendors.join("|") + ")-");
+
+  var unprefix = function (prop) {
+  	return prop.replace(unprefixPattern, "");
+  };
+
+  var vendorPattern = new RegExp("^(?:" + vendors.join("|") + ")([A-Z])");
+
+  var hyphenate = function (str) {
+  	var hyphenated;
+
+  	if (!str) {
+  		return ""; // edge case
+  	}
+
+  	if (vendorPattern.test(str)) {
+  		str = "-" + str;
+  	}
+
+  	hyphenated = str.replace(/[A-Z]/g, function (match) {
+  		return "-" + match.toLowerCase();
+  	});
+
+  	return hyphenated;
+  };
+
+  var createTransitions,
+      animateStyle_createTransitions__testStyle,
+      TRANSITION,
+      TRANSITIONEND,
+      CSS_TRANSITIONS_ENABLED,
+      TRANSITION_DURATION,
+      TRANSITION_PROPERTY,
+      TRANSITION_TIMING_FUNCTION,
+      canUseCssTransitions = {},
+      cannotUseCssTransitions = {};
+
+  if (!isClient) {
+  	createTransitions = null;
+  } else {
+  	animateStyle_createTransitions__testStyle = createElement("div").style;
+
+  	// determine some facts about our environment
+  	(function () {
+  		if (animateStyle_createTransitions__testStyle.transition !== undefined) {
+  			TRANSITION = "transition";
+  			TRANSITIO
