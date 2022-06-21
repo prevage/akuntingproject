@@ -10053,4 +10053,252 @@
   	}
 
   	// Special case - <option>
-  	if (this.name 
+  	if (this.name === "option") {
+  		special_option__unbind(this);
+  	}
+
+  	this.attributes.forEach(methodCallers__unbind);
+  	this.conditionalAttributes.forEach(methodCallers__unbind);
+  }
+
+  var Element_prototype_unrender = Element$unrender;
+
+  function Element$unrender(shouldDestroy) {
+  	var binding, bindings, transition;
+
+  	if (transition = this.transition) {
+  		transition.complete();
+  	}
+
+  	// Detach as soon as we can
+  	if (this.name === "option") {
+  		// <option> elements detach immediately, so that
+  		// their parent <select> element syncs correctly, and
+  		// since option elements can't have transitions anyway
+  		this.detach();
+  	} else if (shouldDestroy) {
+  		global_runloop.detachWhenReady(this);
+  	}
+
+  	// Children first. that way, any transitions on child elements will be
+  	// handled by the current transitionManager
+  	if (this.fragment) {
+  		this.fragment.unrender(false);
+  	}
+
+  	if (binding = this.binding) {
+  		this.binding.unrender();
+
+  		this.node._ractive.binding = null;
+  		bindings = this.root._twowayBindings[binding.keypath.str];
+  		bindings.splice(bindings.indexOf(binding), 1);
+  	}
+
+  	// Remove event handlers
+  	if (this.eventHandlers) {
+  		this.eventHandlers.forEach(methodCallers__unrender);
+  	}
+
+  	if (this.decorator) {
+  		global_runloop.registerDecorator(this.decorator);
+  	}
+
+  	// trigger outro transition if necessary
+  	if (this.root.transitionsEnabled && this.outro) {
+  		transition = new _Transition(this, this.outro, false);
+  		global_runloop.registerTransition(transition);
+  		global_runloop.scheduleTask(function () {
+  			return transition.start();
+  		});
+  	}
+
+  	// Remove this node from any live queries
+  	if (this.liveQueries) {
+  		removeFromLiveQueries(this);
+  	}
+
+  	if (this.name === "form") {
+  		form__unrender(this);
+  	}
+  }
+
+  function removeFromLiveQueries(element) {
+  	var query, selector, i;
+
+  	i = element.liveQueries.length;
+  	while (i--) {
+  		query = element.liveQueries[i];
+  		selector = query.selector;
+
+  		query._remove(element.node);
+  	}
+  }
+
+  var Element = function (options) {
+  	this.init(options);
+  };
+
+  Element.prototype = {
+  	bubble: Element_prototype_bubble,
+  	detach: Element_prototype_detach,
+  	find: Element_prototype_find,
+  	findAll: Element_prototype_findAll,
+  	findAllComponents: Element_prototype_findAllComponents,
+  	findComponent: Element_prototype_findComponent,
+  	findNextNode: Element_prototype_findNextNode,
+  	firstNode: Element_prototype_firstNode,
+  	getAttribute: getAttribute,
+  	init: Element_prototype_init,
+  	rebind: Element_prototype_rebind,
+  	render: Element_prototype_render,
+  	toString: Element_prototype_toString,
+  	unbind: Element_prototype_unbind,
+  	unrender: Element_prototype_unrender
+  };
+
+  var _Element = Element;
+
+  var deIndent__empty = /^\s*$/,
+      deIndent__leadingWhitespace = /^\s*/;
+
+  var deIndent = function (str) {
+  	var lines, firstLine, lastLine, minIndent;
+
+  	lines = str.split("\n");
+
+  	// remove first and last line, if they only contain whitespace
+  	firstLine = lines[0];
+  	if (firstLine !== undefined && deIndent__empty.test(firstLine)) {
+  		lines.shift();
+  	}
+
+  	lastLine = lastItem(lines);
+  	if (lastLine !== undefined && deIndent__empty.test(lastLine)) {
+  		lines.pop();
+  	}
+
+  	minIndent = lines.reduce(reducer, null);
+
+  	if (minIndent) {
+  		str = lines.map(function (line) {
+  			return line.replace(minIndent, "");
+  		}).join("\n");
+  	}
+
+  	return str;
+  };
+
+  function reducer(previous, line) {
+  	var lineIndent = deIndent__leadingWhitespace.exec(line)[0];
+
+  	if (previous === null || lineIndent.length < previous.length) {
+  		return lineIndent;
+  	}
+
+  	return previous;
+  }
+
+  var Partial_getPartialTemplate = getPartialTemplate;
+
+  function getPartialTemplate(ractive, name, parentFragment) {
+  	var partial;
+
+  	// If the partial in instance or view heirarchy instances, great
+  	if (partial = getPartialFromRegistry(ractive, name, parentFragment || {})) {
+  		return partial;
+  	}
+
+  	// Does it exist on the page as a script tag?
+  	partial = template_parser.fromId(name, { noThrow: true });
+
+  	if (partial) {
+  		// is this necessary?
+  		partial = deIndent(partial);
+
+  		// parse and register to this ractive instance
+  		var parsed = template_parser.parse(partial, template_parser.getParseOptions(ractive));
+
+  		// register (and return main partial if there are others in the template)
+  		return ractive.partials[name] = parsed.t;
+  	}
+  }
+
+  function getPartialFromRegistry(ractive, name, parentFragment) {
+  	var fn = undefined,
+  	    partial = findParentPartial(name, parentFragment.owner);
+
+  	// if there was an instance up-hierarchy, cool
+  	if (partial) return partial;
+
+  	// find first instance in the ractive or view hierarchy that has this partial
+  	var instance = findInstance("partials", ractive, name);
+
+  	if (!instance) {
+  		return;
+  	}
+
+  	partial = instance.partials[name];
+
+  	// partial is a function?
+  	if (typeof partial === "function") {
+  		fn = partial.bind(instance);
+  		fn.isOwner = instance.partials.hasOwnProperty(name);
+  		partial = fn.call(ractive, template_parser);
+  	}
+
+  	if (!partial && partial !== "") {
+  		warnIfDebug(noRegistryFunctionReturn, name, "partial", "partial", { ractive: ractive });
+  		return;
+  	}
+
+  	// If this was added manually to the registry,
+  	// but hasn't been parsed, parse it now
+  	if (!template_parser.isParsed(partial)) {
+
+  		// use the parseOptions of the ractive instance on which it was found
+  		var parsed = template_parser.parse(partial, template_parser.getParseOptions(instance));
+
+  		// Partials cannot contain nested partials!
+  		// TODO add a test for this
+  		if (parsed.p) {
+  			warnIfDebug("Partials ({{>%s}}) cannot contain nested inline partials", name, { ractive: ractive });
+  		}
+
+  		// if fn, use instance to store result, otherwise needs to go
+  		// in the correct point in prototype chain on instance or constructor
+  		var target = fn ? instance : findOwner(instance, name);
+
+  		// may be a template with partials, which need to be registered and main template extracted
+  		target.partials[name] = partial = parsed.t;
+  	}
+
+  	// store for reset
+  	if (fn) {
+  		partial._fn = fn;
+  	}
+
+  	return partial.v ? partial.t : partial;
+  }
+
+  function findOwner(ractive, key) {
+  	return ractive.partials.hasOwnProperty(key) ? ractive : findConstructor(ractive.constructor, key);
+  }
+
+  function findConstructor(constructor, key) {
+  	if (!constructor) {
+  		return;
+  	}
+  	return constructor.partials.hasOwnProperty(key) ? constructor : findConstructor(constructor._Parent, key);
+  }
+
+  function findParentPartial(name, parent) {
+  	if (parent) {
+  		if (parent.template && parent.template.p && parent.template.p[name]) {
+  			return parent.template.p[name];
+  		} else if (parent.parentFragment && parent.parentFragment.owner) {
+  			return findParentPartial(name, parent.parentFragment.owner);
+  		}
+  	}
+  }
+
+  var applyIndent = function (string, in
