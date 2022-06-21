@@ -9534,4 +9534,250 @@
 
   		var to;
 
-  		if (arguments
+  		if (arguments.length === 4) {
+  			throw new Error("t.animateStyle() returns a promise - use .then() instead of passing a callback");
+  		}
+
+  		// Special case - page isn't visible. Don't animate anything, because
+  		// that way you'll never get CSS transitionend events
+  		if (animateStyle_visibility.hidden) {
+  			this.setStyle(style, value);
+  			return resolved || (resolved = utils_Promise.resolve());
+  		}
+
+  		if (typeof style === "string") {
+  			to = {};
+  			to[style] = value;
+  		} else {
+  			to = style;
+
+  			// shuffle arguments
+  			options = value;
+  		}
+
+  		// As of 0.3.9, transition authors should supply an `option` object with
+  		// `duration` and `easing` properties (and optional `delay`), plus a
+  		// callback function that gets called after the animation completes
+
+  		// TODO remove this check in a future version
+  		if (!options) {
+  			warnOnceIfDebug("The \"%s\" transition does not supply an options object to `t.animateStyle()`. This will break in a future version of Ractive. For more info see https://github.com/RactiveJS/Ractive/issues/340", this.name);
+  			options = this;
+  		}
+
+  		var promise = new utils_Promise(function (resolve) {
+  			var propertyNames, changedProperties, computedStyle, current, from, i, prop;
+
+  			// Edge case - if duration is zero, set style synchronously and complete
+  			if (!options.duration) {
+  				_this.setStyle(to);
+  				resolve();
+  				return;
+  			}
+
+  			// Get a list of the properties we're animating
+  			propertyNames = Object.keys(to);
+  			changedProperties = [];
+
+  			// Store the current styles
+  			computedStyle = _animateStyle__getComputedStyle(_this.node);
+
+  			from = {};
+  			i = propertyNames.length;
+  			while (i--) {
+  				prop = propertyNames[i];
+  				current = computedStyle[helpers_prefix(prop)];
+
+  				if (current === "0px") {
+  					current = 0;
+  				}
+
+  				// we need to know if we're actually changing anything
+  				if (current != to[prop]) {
+  					// use != instead of !==, so we can compare strings with numbers
+  					changedProperties.push(prop);
+
+  					// make the computed style explicit, so we can animate where
+  					// e.g. height='auto'
+  					_this.node.style[helpers_prefix(prop)] = current;
+  				}
+  			}
+
+  			// If we're not actually changing anything, the transitionend event
+  			// will never fire! So we complete early
+  			if (!changedProperties.length) {
+  				resolve();
+  				return;
+  			}
+
+  			animateStyle_createTransitions(_this, to, options, changedProperties, resolve);
+  		});
+
+  		return promise;
+  	};
+  }
+
+  var _animateStyle = animateStyle;
+
+  var processParams = function (params, defaults) {
+  	if (typeof params === "number") {
+  		params = { duration: params };
+  	} else if (typeof params === "string") {
+  		if (params === "slow") {
+  			params = { duration: 600 };
+  		} else if (params === "fast") {
+  			params = { duration: 200 };
+  		} else {
+  			params = { duration: 400 };
+  		}
+  	} else if (!params) {
+  		params = {};
+  	}
+
+  	return fillGaps({}, params, defaults);
+  };
+
+  var prototype_start = Transition$start;
+
+  function Transition$start() {
+  	var _this = this;
+
+  	var node, originalStyle, completed;
+
+  	node = this.node = this.element.node;
+  	originalStyle = node.getAttribute("style");
+
+  	// create t.complete() - we don't want this on the prototype,
+  	// because we don't want `this` silliness when passing it as
+  	// an argument
+  	this.complete = function (noReset) {
+  		if (completed) {
+  			return;
+  		}
+
+  		if (!noReset && _this.isIntro) {
+  			resetStyle(node, originalStyle);
+  		}
+
+  		node._ractive.transition = null;
+  		_this._manager.remove(_this);
+
+  		completed = true;
+  	};
+
+  	// If the transition function doesn't exist, abort
+  	if (!this._fn) {
+  		this.complete();
+  		return;
+  	}
+
+  	this._fn.apply(this.root, [this].concat(this.params));
+  }
+
+  function resetStyle(node, style) {
+  	if (style) {
+  		node.setAttribute("style", style);
+  	} else {
+
+  		// Next line is necessary, to remove empty style attribute!
+  		// See http://stackoverflow.com/a/7167553
+  		node.getAttribute("style");
+  		node.removeAttribute("style");
+  	}
+  }
+
+  var Transition = function (owner, template, isIntro) {
+  	this.init(owner, template, isIntro);
+  };
+
+  Transition.prototype = {
+  	init: Transition_prototype_init,
+  	start: prototype_start,
+  	getStyle: prototype_getStyle,
+  	setStyle: setStyle,
+  	animateStyle: _animateStyle,
+  	processParams: processParams
+  };
+
+  var _Transition = Transition;
+
+  var Element_prototype_render = Element$render;
+
+  var updateCss, updateScript;
+
+  updateCss = function () {
+  	var node = this.node,
+  	    content = this.fragment.toString(false);
+
+  	// IE8 has no styleSheet unless there's a type text/css
+  	if (window && window.appearsToBeIELessEqual8) {
+  		node.type = "text/css";
+  	}
+
+  	if (node.styleSheet) {
+  		node.styleSheet.cssText = content;
+  	} else {
+
+  		while (node.hasChildNodes()) {
+  			node.removeChild(node.firstChild);
+  		}
+
+  		node.appendChild(document.createTextNode(content));
+  	}
+  };
+
+  updateScript = function () {
+  	if (!this.node.type || this.node.type === "text/javascript") {
+  		warnIfDebug("Script tag was updated. This does not cause the code to be re-evaluated!", { ractive: this.root });
+  		// As it happens, we ARE in a position to re-evaluate the code if we wanted
+  		// to - we could eval() it, or insert it into a fresh (temporary) script tag.
+  		// But this would be a terrible idea with unpredictable results, so let's not.
+  	}
+
+  	this.node.text = this.fragment.toString(false);
+  };
+  function Element$render() {
+  	var _this = this;
+
+  	var root = this.root,
+  	    namespace,
+  	    node,
+  	    transition;
+
+  	namespace = getNamespace(this);
+  	node = this.node = createElement(this.name, namespace);
+
+  	// Is this a top-level node of a component? If so, we may need to add
+  	// a data-ractive-css attribute, for CSS encapsulation
+  	if (this.parentFragment.cssIds) {
+  		this.node.setAttribute("data-ractive-css", this.parentFragment.cssIds.map(function (x) {
+  			return "{" + x + "}";
+  		}).join(" "));
+  	}
+
+  	// Add _ractive property to the node - we use this object to store stuff
+  	// related to proxy events, two-way bindings etc
+  	defineProperty(this.node, "_ractive", {
+  		value: {
+  			proxy: this,
+  			keypath: getInnerContext(this.parentFragment),
+  			events: create(null),
+  			root: root
+  		}
+  	});
+
+  	// Render attributes
+  	this.attributes.forEach(function (a) {
+  		return a.render(node);
+  	});
+  	this.conditionalAttributes.forEach(function (a) {
+  		return a.render(node);
+  	});
+
+  	// Render children
+  	if (this.fragment) {
+  		// Special case - <script> element
+  		if (this.name === "script") {
+  			this.bubble = updateScript;
+  			this.node.text = this.fragment.toString(false); // bypass warning initially
+ 
