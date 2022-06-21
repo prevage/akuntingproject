@@ -9780,4 +9780,277 @@
   		if (this.name === "script") {
   			this.bubble = updateScript;
   			this.node.text = this.fragment.toString(false); // bypass warning initially
- 
+  			this.fragment.unrender = noop; // TODO this is a kludge
+  		}
+
+  		// Special case - <style> element
+  		else if (this.name === "style") {
+  			this.bubble = updateCss;
+  			this.bubble();
+  			this.fragment.unrender = noop;
+  		}
+
+  		// Special case - contenteditable
+  		else if (this.binding && this.getAttribute("contenteditable")) {
+  			this.fragment.unrender = noop;
+  		} else {
+  			this.node.appendChild(this.fragment.render());
+  		}
+  	}
+
+  	// deal with two-way bindings
+  	if (this.binding) {
+  		this.binding.render();
+  		this.node._ractive.binding = this.binding;
+  	}
+
+  	// Add proxy event handlers
+  	if (this.eventHandlers) {
+  		this.eventHandlers.forEach(function (h) {
+  			return h.render();
+  		});
+  	}
+
+  	if (this.name === "option") {
+  		processOption(this);
+  	}
+
+  	// Special cases
+  	if (this.name === "img") {
+  		// if this is an <img>, and we're in a crap browser, we may
+  		// need to prevent it from overriding width and height when
+  		// it loads the src
+  		special_img__render(this);
+  	} else if (this.name === "form") {
+  		// forms need to keep track of their bindings, in case of reset
+  		form__render(this);
+  	} else if (this.name === "input" || this.name === "textarea") {
+  		// inputs and textareas should store their initial value as
+  		// `defaultValue` in case of reset
+  		this.node.defaultValue = this.node.value;
+  	} else if (this.name === "option") {
+  		// similarly for option nodes
+  		this.node.defaultSelected = this.node.selected;
+  	}
+
+  	// apply decorator(s)
+  	if (this.decorator && this.decorator.fn) {
+  		global_runloop.scheduleTask(function () {
+  			if (!_this.decorator.torndown) {
+  				_this.decorator.init();
+  			}
+  		}, true);
+  	}
+
+  	// trigger intro transition
+  	if (root.transitionsEnabled && this.intro) {
+  		transition = new _Transition(this, this.intro, true);
+  		global_runloop.registerTransition(transition);
+  		global_runloop.scheduleTask(function () {
+  			return transition.start();
+  		}, true);
+
+  		this.transition = transition;
+  	}
+
+  	if (this.node.autofocus) {
+  		// Special case. Some browsers (*cough* Firefix *cough*) have a problem
+  		// with dynamically-generated elements having autofocus, and they won't
+  		// allow you to programmatically focus the element until it's in the DOM
+  		global_runloop.scheduleTask(function () {
+  			return _this.node.focus();
+  		}, true);
+  	}
+
+  	updateLiveQueries(this);
+  	return this.node;
+  }
+
+  function getNamespace(element) {
+  	var namespace, xmlns, parent;
+
+  	// Use specified namespace...
+  	if (xmlns = element.getAttribute("xmlns")) {
+  		namespace = xmlns;
+  	}
+
+  	// ...or SVG namespace, if this is an <svg> element
+  	else if (element.name === "svg") {
+  		namespace = namespaces.svg;
+  	} else if (parent = element.parent) {
+  		// ...or HTML, if the parent is a <foreignObject>
+  		if (parent.name === "foreignObject") {
+  			namespace = namespaces.html;
+  		}
+
+  		// ...or inherit from the parent node
+  		else {
+  			namespace = parent.node.namespaceURI;
+  		}
+  	} else {
+  		namespace = element.root.el.namespaceURI;
+  	}
+
+  	return namespace;
+  }
+
+  function processOption(option) {
+  	var optionValue, selectValue, i;
+
+  	if (!option.select) {
+  		return;
+  	}
+
+  	selectValue = option.select.getAttribute("value");
+  	if (selectValue === undefined) {
+  		return;
+  	}
+
+  	optionValue = option.getAttribute("value");
+
+  	if (option.select.node.multiple && isArray(selectValue)) {
+  		i = selectValue.length;
+  		while (i--) {
+  			if (optionValue == selectValue[i]) {
+  				option.node.selected = true;
+  				break;
+  			}
+  		}
+  	} else {
+  		option.node.selected = optionValue == selectValue;
+  	}
+  }
+
+  function updateLiveQueries(element) {
+  	var instance, liveQueries, i, selector, query;
+
+  	// Does this need to be added to any live queries?
+  	instance = element.root;
+
+  	do {
+  		liveQueries = instance._liveQueries;
+
+  		i = liveQueries.length;
+  		while (i--) {
+  			selector = liveQueries[i];
+  			query = liveQueries["_" + selector];
+
+  			if (query._test(element)) {
+  				// keep register of applicable selectors, for when we teardown
+  				(element.liveQueries || (element.liveQueries = [])).push(query);
+  			}
+  		}
+  	} while (instance = instance.parent);
+  }
+
+  var Element_prototype_toString = function () {
+  	var str, escape;
+
+  	if (this.template.y) {
+  		// DOCTYPE declaration
+  		return "<!DOCTYPE" + this.template.dd + ">";
+  	}
+
+  	str = "<" + this.template.e;
+
+  	str += this.attributes.map(stringifyAttribute).join("") + this.conditionalAttributes.map(stringifyAttribute).join("");
+
+  	// Special case - selected options
+  	if (this.name === "option" && optionIsSelected(this)) {
+  		str += " selected";
+  	}
+
+  	// Special case - two-way radio name bindings
+  	if (this.name === "input" && inputIsCheckedRadio(this)) {
+  		str += " checked";
+  	}
+
+  	str += ">";
+
+  	// Special case - textarea
+  	if (this.name === "textarea" && this.getAttribute("value") !== undefined) {
+  		str += escapeHtml(this.getAttribute("value"));
+  	}
+
+  	// Special case - contenteditable
+  	else if (this.getAttribute("contenteditable") !== undefined) {
+  		str += this.getAttribute("value") || "";
+  	}
+
+  	if (this.fragment) {
+  		escape = this.name !== "script" && this.name !== "style";
+  		str += this.fragment.toString(escape);
+  	}
+
+  	// add a closing tag if this isn't a void element
+  	if (!voidElementNames.test(this.template.e)) {
+  		str += "</" + this.template.e + ">";
+  	}
+
+  	return str;
+  };
+
+  function optionIsSelected(element) {
+  	var optionValue, selectValue, i;
+
+  	optionValue = element.getAttribute("value");
+
+  	if (optionValue === undefined || !element.select) {
+  		return false;
+  	}
+
+  	selectValue = element.select.getAttribute("value");
+
+  	if (selectValue == optionValue) {
+  		return true;
+  	}
+
+  	if (element.select.getAttribute("multiple") && isArray(selectValue)) {
+  		i = selectValue.length;
+  		while (i--) {
+  			if (selectValue[i] == optionValue) {
+  				return true;
+  			}
+  		}
+  	}
+  }
+
+  function inputIsCheckedRadio(element) {
+  	var attributes, typeAttribute, valueAttribute, nameAttribute;
+
+  	attributes = element.attributes;
+
+  	typeAttribute = attributes.type;
+  	valueAttribute = attributes.value;
+  	nameAttribute = attributes.name;
+
+  	if (!typeAttribute || typeAttribute.value !== "radio" || !valueAttribute || !nameAttribute.interpolator) {
+  		return;
+  	}
+
+  	if (valueAttribute.value === nameAttribute.interpolator.value) {
+  		return true;
+  	}
+  }
+
+  function stringifyAttribute(attribute) {
+  	var str = attribute.toString();
+  	return str ? " " + str : "";
+  }
+
+  var Element_prototype_unbind = Element$unbind;
+  function Element$unbind() {
+  	if (this.fragment) {
+  		this.fragment.unbind();
+  	}
+
+  	if (this.binding) {
+  		this.binding.unbind();
+  	}
+
+  	if (this.eventHandlers) {
+  		this.eventHandlers.forEach(methodCallers__unbind);
+  	}
+
+  	// Special case - <option>
+  	if (this.name 
