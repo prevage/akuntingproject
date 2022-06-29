@@ -10581,4 +10581,272 @@
   	return this.instance.fragment.findAll(selector, query);
   }
 
-  var Component_prototype_findAllComponents = Component$findAllComponents
+  var Component_prototype_findAllComponents = Component$findAllComponents;
+
+  function Component$findAllComponents(selector, query) {
+  	query._test(this, true);
+
+  	if (this.instance.fragment) {
+  		this.instance.fragment.findAllComponents(selector, query);
+  	}
+  }
+
+  var Component_prototype_findComponent = Component$findComponent;
+
+  function Component$findComponent(selector) {
+  	if (!selector || selector === this.name) {
+  		return this.instance;
+  	}
+
+  	if (this.instance.fragment) {
+  		return this.instance.fragment.findComponent(selector);
+  	}
+
+  	return null;
+  }
+
+  var Component_prototype_findNextNode = Component$findNextNode;
+
+  function Component$findNextNode() {
+  	return this.parentFragment.findNextNode(this);
+  }
+
+  var Component_prototype_firstNode = Component$firstNode;
+
+  function Component$firstNode() {
+  	if (this.rendered) {
+  		return this.instance.fragment.firstNode();
+  	}
+
+  	return null;
+  }
+
+  var processWrapper = function (wrapper, array, methodName, newIndices) {
+  	var root = wrapper.root;
+  	var keypath = wrapper.keypath;
+
+  	if (!!newIndices) {
+  		root.viewmodel.smartUpdate(keypath, array, newIndices);
+  	} else {
+  		// If this is a sort or reverse, we just do root.set()...
+  		// TODO use merge logic?
+  		root.viewmodel.mark(keypath);
+  	}
+  };
+
+  var patchedArrayProto = [],
+      mutatorMethods = ["pop", "push", "reverse", "shift", "sort", "splice", "unshift"],
+      testObj,
+      patchArrayMethods,
+      unpatchArrayMethods;
+
+  mutatorMethods.forEach(function (methodName) {
+  	var method = function () {
+  		for (var _len = arguments.length, args = Array(_len), _key = 0; _key < _len; _key++) {
+  			args[_key] = arguments[_key];
+  		}
+
+  		var newIndices, result, wrapper, i;
+
+  		newIndices = shared_getNewIndices(this, methodName, args);
+
+  		// apply the underlying method
+  		result = Array.prototype[methodName].apply(this, arguments);
+
+  		// trigger changes
+  		global_runloop.start();
+
+  		this._ractive.setting = true;
+  		i = this._ractive.wrappers.length;
+  		while (i--) {
+  			wrapper = this._ractive.wrappers[i];
+
+  			global_runloop.addRactive(wrapper.root);
+  			processWrapper(wrapper, this, methodName, newIndices);
+  		}
+
+  		global_runloop.end();
+
+  		this._ractive.setting = false;
+  		return result;
+  	};
+
+  	defineProperty(patchedArrayProto, methodName, {
+  		value: method
+  	});
+  });
+
+  // can we use prototype chain injection?
+  // http://perfectionkills.com/how-ecmascript-5-still-does-not-allow-to-subclass-an-array/#wrappers_prototype_chain_injection
+  testObj = {};
+
+  if (testObj.__proto__) {
+  	// yes, we can
+  	patchArrayMethods = function (array) {
+  		array.__proto__ = patchedArrayProto;
+  	};
+
+  	unpatchArrayMethods = function (array) {
+  		array.__proto__ = Array.prototype;
+  	};
+  } else {
+  	// no, we can't
+  	patchArrayMethods = function (array) {
+  		var i, methodName;
+
+  		i = mutatorMethods.length;
+  		while (i--) {
+  			methodName = mutatorMethods[i];
+  			defineProperty(array, methodName, {
+  				value: patchedArrayProto[methodName],
+  				configurable: true
+  			});
+  		}
+  	};
+
+  	unpatchArrayMethods = function (array) {
+  		var i;
+
+  		i = mutatorMethods.length;
+  		while (i--) {
+  			delete array[mutatorMethods[i]];
+  		}
+  	};
+  }
+
+  patchArrayMethods.unpatch = unpatchArrayMethods;
+  var patch = patchArrayMethods;
+
+  var arrayAdaptor,
+
+  // helpers
+  ArrayWrapper, array_index__errorMessage;
+
+  arrayAdaptor = {
+  	filter: function (object) {
+  		// wrap the array if a) b) it's an array, and b) either it hasn't been wrapped already,
+  		// or the array didn't trigger the get() itself
+  		return isArray(object) && (!object._ractive || !object._ractive.setting);
+  	},
+  	wrap: function (ractive, array, keypath) {
+  		return new ArrayWrapper(ractive, array, keypath);
+  	}
+  };
+
+  ArrayWrapper = function (ractive, array, keypath) {
+  	this.root = ractive;
+  	this.value = array;
+  	this.keypath = getKeypath(keypath);
+
+  	// if this array hasn't already been ractified, ractify it
+  	if (!array._ractive) {
+
+  		// define a non-enumerable _ractive property to store the wrappers
+  		defineProperty(array, "_ractive", {
+  			value: {
+  				wrappers: [],
+  				instances: [],
+  				setting: false
+  			},
+  			configurable: true
+  		});
+
+  		patch(array);
+  	}
+
+  	// store the ractive instance, so we can handle transitions later
+  	if (!array._ractive.instances[ractive._guid]) {
+  		array._ractive.instances[ractive._guid] = 0;
+  		array._ractive.instances.push(ractive);
+  	}
+
+  	array._ractive.instances[ractive._guid] += 1;
+  	array._ractive.wrappers.push(this);
+  };
+
+  ArrayWrapper.prototype = {
+  	get: function () {
+  		return this.value;
+  	},
+  	teardown: function () {
+  		var array, storage, wrappers, instances, index;
+
+  		array = this.value;
+  		storage = array._ractive;
+  		wrappers = storage.wrappers;
+  		instances = storage.instances;
+
+  		// if teardown() was invoked because we're clearing the cache as a result of
+  		// a change that the array itself triggered, we can save ourselves the teardown
+  		// and immediate setup
+  		if (storage.setting) {
+  			return false; // so that we don't remove it from this.root.viewmodel.wrapped
+  		}
+
+  		index = wrappers.indexOf(this);
+  		if (index === -1) {
+  			throw new Error(array_index__errorMessage);
+  		}
+
+  		wrappers.splice(index, 1);
+
+  		// if nothing else depends on this array, we can revert it to its
+  		// natural state
+  		if (!wrappers.length) {
+  			delete array._ractive;
+  			patch.unpatch(this.value);
+  		} else {
+  			// remove ractive instance if possible
+  			instances[this.root._guid] -= 1;
+  			if (!instances[this.root._guid]) {
+  				index = instances.indexOf(this.root);
+
+  				if (index === -1) {
+  					throw new Error(array_index__errorMessage);
+  				}
+
+  				instances.splice(index, 1);
+  			}
+  		}
+  	}
+  };
+
+  array_index__errorMessage = "Something went wrong in a rather interesting way";
+  var array_index = arrayAdaptor;
+
+  var numeric = /^\s*[0-9]+\s*$/;
+
+  var createBranch = function (key) {
+  	return numeric.test(key) ? [] : {};
+  };
+
+  var magicAdaptor, MagicWrapper;
+
+  try {
+  	Object.defineProperty({}, "test", { value: 0 });
+
+  	magicAdaptor = {
+  		filter: function (object, keypath, ractive) {
+  			var parentWrapper, parentValue;
+
+  			if (!keypath) {
+  				return false;
+  			}
+
+  			keypath = getKeypath(keypath);
+
+  			// If the parent value is a wrapper, other than a magic wrapper,
+  			// we shouldn't wrap this property
+  			if ((parentWrapper = ractive.viewmodel.wrapped[keypath.parent.str]) && !parentWrapper.magic) {
+  				return false;
+  			}
+
+  			parentValue = ractive.viewmodel.get(keypath.parent);
+
+  			// if parentValue is an array that doesn't include this member,
+  			// we should return false otherwise lengths will get messed up
+  			if (isArray(parentValue) && /^[0-9]+$/.test(keypath.lastKey)) {
+  				return false;
+  			}
+
+  			return parentValue && (typeof parentValue === "obj
