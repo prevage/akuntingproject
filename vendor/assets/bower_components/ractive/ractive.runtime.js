@@ -11138,4 +11138,289 @@
   	    keypath;
 
   	i = changes.length;
-  	while (i--)
+  	while (i--) {
+  		keypath = changes[i].parent;
+
+  		while (keypath && !keypath.isRoot) {
+  			if (changes.indexOf(keypath) === -1) {
+  				addToArray(upstreamChanges, keypath);
+  			}
+  			keypath = keypath.parent;
+  		}
+  	}
+
+  	return upstreamChanges;
+  }
+
+  var applyChanges_notifyPatternObservers = notifyPatternObservers;
+
+  function notifyPatternObservers(viewmodel, keypath, onlyDirect) {
+  	var potentialWildcardMatches;
+
+  	updateMatchingPatternObservers(viewmodel, keypath);
+
+  	if (onlyDirect) {
+  		return;
+  	}
+
+  	potentialWildcardMatches = keypath.wildcardMatches();
+  	potentialWildcardMatches.forEach(function (upstreamPattern) {
+  		cascade(viewmodel, upstreamPattern, keypath);
+  	});
+  }
+
+  function cascade(viewmodel, upstreamPattern, keypath) {
+  	var group, map, actualChildKeypath;
+
+  	// TODO should be one or the other
+  	upstreamPattern = upstreamPattern.str || upstreamPattern;
+
+  	group = viewmodel.depsMap.patternObservers;
+  	map = group && group[upstreamPattern];
+
+  	if (!map) {
+  		return;
+  	}
+
+  	map.forEach(function (childKeypath) {
+  		actualChildKeypath = keypath.join(childKeypath.lastKey); // 'foo.bar.baz'
+
+  		updateMatchingPatternObservers(viewmodel, actualChildKeypath);
+  		cascade(viewmodel, childKeypath, actualChildKeypath);
+  	});
+  }
+
+  function updateMatchingPatternObservers(viewmodel, keypath) {
+  	viewmodel.patternObservers.forEach(function (observer) {
+  		if (observer.regex.test(keypath.str)) {
+  			observer.update(keypath);
+  		}
+  	});
+  }
+
+  var applyChanges = Viewmodel$applyChanges;
+
+  function Viewmodel$applyChanges() {
+  	var _this = this;
+
+  	var self = this,
+  	    changes,
+  	    upstreamChanges,
+  	    hash = {},
+  	    bindings;
+
+  	changes = this.changes;
+
+  	if (!changes.length) {
+  		// TODO we end up here on initial render. Perhaps we shouldn't?
+  		return;
+  	}
+
+  	function invalidateComputation(computation) {
+  		var key = computation.key;
+
+  		if (computation.viewmodel === self) {
+  			self.clearCache(key.str);
+  			computation.invalidate();
+
+  			changes.push(key);
+  			cascade(key);
+  		} else {
+  			computation.viewmodel.mark(key);
+  		}
+  	}
+
+  	function cascade(keypath) {
+  		var map, computations;
+
+  		if (self.noCascade.hasOwnProperty(keypath.str)) {
+  			return;
+  		}
+
+  		if (computations = self.deps.computed[keypath.str]) {
+  			computations.forEach(invalidateComputation);
+  		}
+
+  		if (map = self.depsMap.computed[keypath.str]) {
+  			map.forEach(cascade);
+  		}
+  	}
+
+  	changes.slice().forEach(cascade);
+
+  	upstreamChanges = helpers_getUpstreamChanges(changes);
+  	upstreamChanges.forEach(function (keypath) {
+  		var computations;
+
+  		// make sure we haven't already been down this particular keypath in this turn
+  		if (changes.indexOf(keypath) === -1 && (computations = self.deps.computed[keypath.str])) {
+  			computations.forEach(invalidateComputation);
+  		}
+  	});
+
+  	this.changes = [];
+
+  	// Pattern observers are a weird special case
+  	if (this.patternObservers.length) {
+  		upstreamChanges.forEach(function (keypath) {
+  			return applyChanges_notifyPatternObservers(_this, keypath, true);
+  		});
+  		changes.forEach(function (keypath) {
+  			return applyChanges_notifyPatternObservers(_this, keypath);
+  		});
+  	}
+
+  	if (this.deps.observers) {
+  		upstreamChanges.forEach(function (keypath) {
+  			return notifyUpstreamDependants(_this, null, keypath, "observers");
+  		});
+  		notifyAllDependants(this, changes, "observers");
+  	}
+
+  	if (this.deps["default"]) {
+  		bindings = [];
+  		upstreamChanges.forEach(function (keypath) {
+  			return notifyUpstreamDependants(_this, bindings, keypath, "default");
+  		});
+
+  		if (bindings.length) {
+  			notifyBindings(this, bindings, changes);
+  		}
+
+  		notifyAllDependants(this, changes, "default");
+  	}
+
+  	// Return a hash of keypaths to updated values
+  	changes.forEach(function (keypath) {
+  		hash[keypath.str] = _this.get(keypath);
+  	});
+
+  	this.implicitChanges = {};
+  	this.noCascade = {};
+
+  	return hash;
+  }
+
+  function notifyUpstreamDependants(viewmodel, bindings, keypath, groupName) {
+  	var dependants, value;
+
+  	if (dependants = findDependants(viewmodel, keypath, groupName)) {
+  		value = viewmodel.get(keypath);
+
+  		dependants.forEach(function (d) {
+  			// don't "set" the parent value, refine it
+  			// i.e. not data = value, but data[foo] = fooValue
+  			if (bindings && d.refineValue) {
+  				bindings.push(d);
+  			} else {
+  				d.setValue(value);
+  			}
+  		});
+  	}
+  }
+
+  function notifyBindings(viewmodel, bindings, changes) {
+
+  	bindings.forEach(function (binding) {
+  		var useSet = false,
+  		    i = 0,
+  		    length = changes.length,
+  		    refinements = [];
+
+  		while (i < length) {
+  			var keypath = changes[i];
+
+  			if (keypath === binding.keypath) {
+  				useSet = true;
+  				break;
+  			}
+
+  			if (keypath.slice(0, binding.keypath.length) === binding.keypath) {
+  				refinements.push(keypath);
+  			}
+
+  			i++;
+  		}
+
+  		if (useSet) {
+  			binding.setValue(viewmodel.get(binding.keypath));
+  		}
+
+  		if (refinements.length) {
+  			binding.refineValue(refinements);
+  		}
+  	});
+  }
+
+  function notifyAllDependants(viewmodel, keypaths, groupName) {
+  	var queue = [];
+
+  	addKeypaths(keypaths);
+  	queue.forEach(dispatch);
+
+  	function addKeypaths(keypaths) {
+  		keypaths.forEach(addKeypath);
+  		keypaths.forEach(cascade);
+  	}
+
+  	function addKeypath(keypath) {
+  		var deps = findDependants(viewmodel, keypath, groupName);
+
+  		if (deps) {
+  			queue.push({
+  				keypath: keypath,
+  				deps: deps
+  			});
+  		}
+  	}
+
+  	function cascade(keypath) {
+  		var childDeps;
+
+  		if (childDeps = viewmodel.depsMap[groupName][keypath.str]) {
+  			addKeypaths(childDeps);
+  		}
+  	}
+
+  	function dispatch(set) {
+  		var value = viewmodel.get(set.keypath);
+  		set.deps.forEach(function (d) {
+  			return d.setValue(value);
+  		});
+  	}
+  }
+
+  function findDependants(viewmodel, keypath, groupName) {
+  	var group = viewmodel.deps[groupName];
+  	return group ? group[keypath.str] : null;
+  }
+
+  var capture = Viewmodel$capture;
+
+  function Viewmodel$capture() {
+  	this.captureGroups.push([]);
+  }
+
+  var clearCache = Viewmodel$clearCache;
+
+  function Viewmodel$clearCache(keypath, keepExistingWrapper) {
+  	var cacheMap, wrapper;
+
+  	if (!keepExistingWrapper) {
+  		// Is there a wrapped property at this keypath?
+  		if (wrapper = this.wrapped[keypath]) {
+  			// Did we unwrap it?
+  			if (wrapper.teardown() !== false) {
+  				// Is this right?
+  				// What's the meaning of returning false from teardown?
+  				// Could there be a GC ramification if this is a "real" ractive.teardown()?
+  				this.wrapped[keypath] = null;
+  			}
+  		}
+  	}
+
+  	this.cache[keypath] = undefined;
+
+  	if (cacheMap = this.cacheMap[keypath]) {
+  		while (cacheMap.length) {
+  			this.clearCache(cac
