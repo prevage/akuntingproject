@@ -11423,4 +11423,283 @@
 
   	if (cacheMap = this.cacheMap[keypath]) {
   		while (cacheMap.length) {
-  			this.clearCache(cac
+  			this.clearCache(cacheMap.pop());
+  		}
+  	}
+  }
+
+  var UnresolvedDependency = function (computation, ref) {
+  	this.computation = computation;
+  	this.viewmodel = computation.viewmodel;
+  	this.ref = ref;
+
+  	// TODO this seems like a red flag!
+  	this.root = this.viewmodel.ractive;
+  	this.parentFragment = this.root.component && this.root.component.parentFragment;
+  };
+
+  UnresolvedDependency.prototype = {
+  	resolve: function (keypath) {
+  		this.computation.softDeps.push(keypath);
+  		this.computation.unresolvedDeps[keypath.str] = null;
+  		this.viewmodel.register(keypath, this.computation, "computed");
+  	}
+  };
+
+  var Computation_UnresolvedDependency = UnresolvedDependency;
+
+  var Computation = function (key, signature) {
+  	this.key = key;
+
+  	this.getter = signature.getter;
+  	this.setter = signature.setter;
+
+  	this.hardDeps = signature.deps || [];
+  	this.softDeps = [];
+  	this.unresolvedDeps = {};
+
+  	this.depValues = {};
+
+  	this._dirty = this._firstRun = true;
+  };
+
+  Computation.prototype = {
+  	constructor: Computation,
+
+  	init: function (viewmodel) {
+  		var _this = this;
+
+  		var initial;
+
+  		this.viewmodel = viewmodel;
+  		this.bypass = true;
+
+  		initial = viewmodel.get(this.key);
+  		viewmodel.clearCache(this.key.str);
+
+  		this.bypass = false;
+
+  		if (this.setter && initial !== undefined) {
+  			this.set(initial);
+  		}
+
+  		if (this.hardDeps) {
+  			this.hardDeps.forEach(function (d) {
+  				return viewmodel.register(d, _this, "computed");
+  			});
+  		}
+  	},
+
+  	invalidate: function () {
+  		this._dirty = true;
+  	},
+
+  	get: function () {
+  		var _this = this;
+
+  		var newDeps,
+  		    dependenciesChanged,
+  		    dependencyValuesChanged = false;
+
+  		if (this.getting) {
+  			// prevent double-computation (e.g. caused by array mutation inside computation)
+  			var msg = "The " + this.key.str + " computation indirectly called itself. This probably indicates a bug in the computation. It is commonly caused by `array.sort(...)` - if that's the case, clone the array first with `array.slice().sort(...)`";
+  			warnOnce(msg);
+  			return this.value;
+  		}
+
+  		this.getting = true;
+
+  		if (this._dirty) {
+  			// determine whether the inputs have changed, in case this depends on
+  			// other computed values
+  			if (this._firstRun || !this.hardDeps.length && !this.softDeps.length) {
+  				dependencyValuesChanged = true;
+  			} else {
+  				[this.hardDeps, this.softDeps].forEach(function (deps) {
+  					var keypath, value, i;
+
+  					if (dependencyValuesChanged) {
+  						return;
+  					}
+
+  					i = deps.length;
+  					while (i--) {
+  						keypath = deps[i];
+  						value = _this.viewmodel.get(keypath);
+
+  						if (!isEqual(value, _this.depValues[keypath.str])) {
+  							_this.depValues[keypath.str] = value;
+  							dependencyValuesChanged = true;
+
+  							return;
+  						}
+  					}
+  				});
+  			}
+
+  			if (dependencyValuesChanged) {
+  				this.viewmodel.capture();
+
+  				try {
+  					this.value = this.getter();
+  				} catch (err) {
+  					warnIfDebug("Failed to compute \"%s\"", this.key.str);
+  					logIfDebug(err.stack || err);
+
+  					this.value = void 0;
+  				}
+
+  				newDeps = this.viewmodel.release();
+  				dependenciesChanged = this.updateDependencies(newDeps);
+
+  				if (dependenciesChanged) {
+  					[this.hardDeps, this.softDeps].forEach(function (deps) {
+  						deps.forEach(function (keypath) {
+  							_this.depValues[keypath.str] = _this.viewmodel.get(keypath);
+  						});
+  					});
+  				}
+  			}
+
+  			this._dirty = false;
+  		}
+
+  		this.getting = this._firstRun = false;
+  		return this.value;
+  	},
+
+  	set: function (value) {
+  		if (this.setting) {
+  			this.value = value;
+  			return;
+  		}
+
+  		if (!this.setter) {
+  			throw new Error("Computed properties without setters are read-only. (This may change in a future version of Ractive!)");
+  		}
+
+  		this.setter(value);
+  	},
+
+  	updateDependencies: function (newDeps) {
+  		var i, oldDeps, keypath, dependenciesChanged, unresolved;
+
+  		oldDeps = this.softDeps;
+
+  		// remove dependencies that are no longer used
+  		i = oldDeps.length;
+  		while (i--) {
+  			keypath = oldDeps[i];
+
+  			if (newDeps.indexOf(keypath) === -1) {
+  				dependenciesChanged = true;
+  				this.viewmodel.unregister(keypath, this, "computed");
+  			}
+  		}
+
+  		// create references for any new dependencies
+  		i = newDeps.length;
+  		while (i--) {
+  			keypath = newDeps[i];
+
+  			if (oldDeps.indexOf(keypath) === -1 && (!this.hardDeps || this.hardDeps.indexOf(keypath) === -1)) {
+  				dependenciesChanged = true;
+
+  				// if this keypath is currently unresolved, we need to mark
+  				// it as such. TODO this is a bit muddy...
+  				if (isUnresolved(this.viewmodel, keypath) && !this.unresolvedDeps[keypath.str]) {
+  					unresolved = new Computation_UnresolvedDependency(this, keypath.str);
+  					newDeps.splice(i, 1);
+
+  					this.unresolvedDeps[keypath.str] = unresolved;
+  					global_runloop.addUnresolved(unresolved);
+  				} else {
+  					this.viewmodel.register(keypath, this, "computed");
+  				}
+  			}
+  		}
+
+  		if (dependenciesChanged) {
+  			this.softDeps = newDeps.slice();
+  		}
+
+  		return dependenciesChanged;
+  	}
+  };
+
+  function isUnresolved(viewmodel, keypath) {
+  	var key = keypath.firstKey;
+
+  	return !(key in viewmodel.data) && !(key in viewmodel.computations) && !(key in viewmodel.mappings);
+  }
+
+  var Computation_Computation = Computation;
+
+  var compute = Viewmodel$compute;
+  function Viewmodel$compute(key, signature) {
+  	var computation = new Computation_Computation(key, signature);
+
+  	if (this.ready) {
+  		computation.init(this);
+  	}
+
+  	return this.computations[key.str] = computation;
+  }
+
+  var FAILED_LOOKUP = { FAILED_LOOKUP: true };
+
+  var viewmodel_prototype_get = Viewmodel$get;
+
+  var viewmodel_prototype_get__empty = {};
+  function Viewmodel$get(keypath, options) {
+  	var cache = this.cache,
+  	    value,
+  	    computation,
+  	    wrapped,
+  	    captureGroup,
+  	    keypathStr = keypath.str,
+  	    key;
+
+  	options = options || viewmodel_prototype_get__empty;
+
+  	// capture the keypath, if we're inside a computation
+  	if (options.capture && (captureGroup = lastItem(this.captureGroups))) {
+  		if (! ~captureGroup.indexOf(keypath)) {
+  			captureGroup.push(keypath);
+  		}
+  	}
+
+  	if (hasOwn.call(this.mappings, keypath.firstKey)) {
+  		return this.mappings[keypath.firstKey].get(keypath, options);
+  	}
+
+  	if (keypath.isSpecial) {
+  		return keypath.value;
+  	}
+
+  	if (cache[keypathStr] === undefined) {
+
+  		// Is this a computed property?
+  		if ((computation = this.computations[keypathStr]) && !computation.bypass) {
+  			value = computation.get();
+  			this.adapt(keypathStr, value);
+  		}
+
+  		// Is this a wrapped property?
+  		else if (wrapped = this.wrapped[keypathStr]) {
+  			value = wrapped.value;
+  		}
+
+  		// Is it the root?
+  		else if (keypath.isRoot) {
+  			this.adapt("", this.data);
+  			value = this.data;
+  		}
+
+  		// No? Then we need to retrieve the value one key at a time
+  		else {
+  			value = retrieve(this, keypath);
+  		}
+
+ 
