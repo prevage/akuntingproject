@@ -12002,4 +12002,264 @@
 
   var comparators = {};
   function Viewmodel$merge(keypath, currentArray, array, options) {
-  	var oldArray, newArray, com
+  	var oldArray, newArray, comparator, newIndices;
+
+  	this.mark(keypath);
+
+  	if (options && options.compare) {
+
+  		comparator = getComparatorFunction(options.compare);
+
+  		try {
+  			oldArray = currentArray.map(comparator);
+  			newArray = array.map(comparator);
+  		} catch (err) {
+  			// fallback to an identity check - worst case scenario we have
+  			// to do more DOM manipulation than we thought...
+  			warnIfDebug("merge(): \"%s\" comparison failed. Falling back to identity checking", keypath);
+
+  			oldArray = currentArray;
+  			newArray = array;
+  		}
+  	} else {
+  		oldArray = currentArray;
+  		newArray = array;
+  	}
+
+  	// find new indices for members of oldArray
+  	newIndices = mapOldToNewIndex(oldArray, newArray);
+
+  	this.smartUpdate(keypath, array, newIndices, currentArray.length !== array.length);
+  }
+
+  function stringify(item) {
+  	return JSON.stringify(item);
+  }
+
+  function getComparatorFunction(comparator) {
+  	// If `compare` is `true`, we use JSON.stringify to compare
+  	// objects that are the same shape, but non-identical - i.e.
+  	// { foo: 'bar' } !== { foo: 'bar' }
+  	if (comparator === true) {
+  		return stringify;
+  	}
+
+  	if (typeof comparator === "string") {
+  		if (!comparators[comparator]) {
+  			comparators[comparator] = function (item) {
+  				return item[comparator];
+  			};
+  		}
+
+  		return comparators[comparator];
+  	}
+
+  	if (typeof comparator === "function") {
+  		return comparator;
+  	}
+
+  	throw new Error("The `compare` option must be a function, or a string representing an identifying field (or `true` to use JSON.stringify)");
+  }
+
+  var register = Viewmodel$register;
+
+  function Viewmodel$register(keypath, dependant) {
+  	var group = arguments[2] === undefined ? "default" : arguments[2];
+
+  	var mapping, depsByKeypath, deps;
+
+  	if (dependant.isStatic) {
+  		return; // TODO we should never get here if a dependant is static...
+  	}
+
+  	if (mapping = this.mappings[keypath.firstKey]) {
+  		mapping.register(keypath, dependant, group);
+  	} else {
+  		depsByKeypath = this.deps[group] || (this.deps[group] = {});
+  		deps = depsByKeypath[keypath.str] || (depsByKeypath[keypath.str] = []);
+
+  		deps.push(dependant);
+
+  		if (!this.depsMap[group]) {
+  			this.depsMap[group] = {};
+  		}
+
+  		if (!keypath.isRoot) {
+  			register__updateDependantsMap(this, keypath, group);
+  		}
+  	}
+  }
+
+  function register__updateDependantsMap(viewmodel, keypath, group) {
+  	var map, parent, keypathStr;
+
+  	// update dependants map
+  	while (!keypath.isRoot) {
+  		map = viewmodel.depsMap[group];
+  		parent = map[keypath.parent.str] || (map[keypath.parent.str] = []);
+
+  		keypathStr = keypath.str;
+
+  		// TODO find an alternative to this nasty approach
+  		if (parent["_" + keypathStr] === undefined) {
+  			parent["_" + keypathStr] = 0;
+  			parent.push(keypath);
+  		}
+
+  		parent["_" + keypathStr] += 1;
+  		keypath = keypath.parent;
+  	}
+  }
+
+  var release = Viewmodel$release;
+
+  function Viewmodel$release() {
+  	return this.captureGroups.pop();
+  }
+
+  var reset = Viewmodel$reset;
+
+  function Viewmodel$reset(data) {
+  	this.data = data;
+  	this.clearCache("");
+  }
+
+  var prototype_set = Viewmodel$set;
+
+  function Viewmodel$set(keypath, value) {
+  	var options = arguments[2] === undefined ? {} : arguments[2];
+
+  	var mapping, computation, wrapper, keepExistingWrapper;
+
+  	// unless data is being set for data tracking purposes
+  	if (!options.noMapping) {
+  		// If this data belongs to a different viewmodel,
+  		// pass the change along
+  		if (mapping = this.mappings[keypath.firstKey]) {
+  			return mapping.set(keypath, value);
+  		}
+  	}
+
+  	computation = this.computations[keypath.str];
+  	if (computation) {
+  		if (computation.setting) {
+  			// let the other computation set() handle things...
+  			return;
+  		}
+  		computation.set(value);
+  		value = computation.get();
+  	}
+
+  	if (isEqual(this.cache[keypath.str], value)) {
+  		return;
+  	}
+
+  	wrapper = this.wrapped[keypath.str];
+
+  	// If we have a wrapper with a `reset()` method, we try and use it. If the
+  	// `reset()` method returns false, the wrapper should be torn down, and
+  	// (most likely) a new one should be created later
+  	if (wrapper && wrapper.reset) {
+  		keepExistingWrapper = wrapper.reset(value) !== false;
+
+  		if (keepExistingWrapper) {
+  			value = wrapper.get();
+  		}
+  	}
+
+  	if (!computation && !keepExistingWrapper) {
+  		resolveSet(this, keypath, value);
+  	}
+
+  	if (!options.silent) {
+  		this.mark(keypath);
+  	} else {
+  		// We're setting a parent of the original target keypath (i.e.
+  		// creating a fresh branch) - we need to clear the cache, but
+  		// not mark it as a change
+  		this.clearCache(keypath.str);
+  	}
+  }
+
+  function resolveSet(viewmodel, keypath, value) {
+  	var wrapper, parentValue, wrapperSet, valueSet;
+
+  	wrapperSet = function () {
+  		if (wrapper.set) {
+  			wrapper.set(keypath.lastKey, value);
+  		} else {
+  			parentValue = wrapper.get();
+  			valueSet();
+  		}
+  	};
+
+  	valueSet = function () {
+  		if (!parentValue) {
+  			parentValue = createBranch(keypath.lastKey);
+  			viewmodel.set(keypath.parent, parentValue, { silent: true });
+  		}
+  		parentValue[keypath.lastKey] = value;
+  	};
+
+  	wrapper = viewmodel.wrapped[keypath.parent.str];
+
+  	if (wrapper) {
+  		wrapperSet();
+  	} else {
+  		parentValue = viewmodel.get(keypath.parent);
+
+  		// may have been wrapped via the above .get()
+  		// call on viewmodel if this is first access via .set()!
+  		if (wrapper = viewmodel.wrapped[keypath.parent.str]) {
+  			wrapperSet();
+  		} else {
+  			valueSet();
+  		}
+  	}
+  }
+
+  var smartUpdate = Viewmodel$smartUpdate;
+
+  var implicitOption = { implicit: true },
+      noCascadeOption = { noCascade: true };
+  function Viewmodel$smartUpdate(keypath, array, newIndices) {
+  	var _this = this;
+
+  	var dependants, oldLength, i;
+
+  	oldLength = newIndices.length;
+
+  	// Indices that are being removed should be marked as dirty
+  	newIndices.forEach(function (newIndex, oldIndex) {
+  		if (newIndex === -1) {
+  			_this.mark(keypath.join(oldIndex), noCascadeOption);
+  		}
+  	});
+
+  	// Update the model
+  	// TODO allow existing array to be updated in place, rather than replaced?
+  	this.set(keypath, array, { silent: true });
+
+  	if (dependants = this.deps["default"][keypath.str]) {
+  		dependants.filter(canShuffle).forEach(function (d) {
+  			return d.shuffle(newIndices, array);
+  		});
+  	}
+
+  	if (oldLength !== array.length) {
+  		this.mark(keypath.join("length"), implicitOption);
+
+  		for (i = newIndices.touchedFrom; i < array.length; i += 1) {
+  			this.mark(keypath.join(i));
+  		}
+
+  		// don't allow removed indexes beyond end of new array to trigger recomputations
+  		// TODO is this still necessary, now that computations are lazy?
+  		for (i = array.length; i < oldLength; i += 1) {
+  			this.mark(keypath.join(i), noCascadeOption);
+  		}
+  	}
+  }
+
+  function canShuffle(dependant) {
+  	return typeof dep
