@@ -12262,4 +12262,289 @@
   }
 
   function canShuffle(dependant) {
-  	return typeof dep
+  	return typeof dependant.shuffle === "function";
+  }
+
+  var prototype_teardown = Viewmodel$teardown;
+
+  function Viewmodel$teardown() {
+  	var _this = this;
+
+  	var unresolvedImplicitDependency;
+
+  	// Clear entire cache - this has the desired side-effect
+  	// of unwrapping adapted values (e.g. arrays)
+  	Object.keys(this.cache).forEach(function (keypath) {
+  		return _this.clearCache(keypath);
+  	});
+
+  	// Teardown any failed lookups - we don't need them to resolve any more
+  	while (unresolvedImplicitDependency = this.unresolvedImplicitDependencies.pop()) {
+  		unresolvedImplicitDependency.teardown();
+  	}
+  }
+
+  var unregister = Viewmodel$unregister;
+
+  function Viewmodel$unregister(keypath, dependant) {
+  	var group = arguments[2] === undefined ? "default" : arguments[2];
+
+  	var mapping, deps, index;
+
+  	if (dependant.isStatic) {
+  		return;
+  	}
+
+  	if (mapping = this.mappings[keypath.firstKey]) {
+  		return mapping.unregister(keypath, dependant, group);
+  	}
+
+  	deps = this.deps[group][keypath.str];
+  	index = deps.indexOf(dependant);
+
+  	if (index === -1) {
+  		throw new Error("Attempted to remove a dependant that was no longer registered! This should not happen. If you are seeing this bug in development please raise an issue at https://github.com/RactiveJS/Ractive/issues - thanks");
+  	}
+
+  	deps.splice(index, 1);
+
+  	if (keypath.isRoot) {
+  		return;
+  	}
+
+  	unregister__updateDependantsMap(this, keypath, group);
+  }
+
+  function unregister__updateDependantsMap(viewmodel, keypath, group) {
+  	var map, parent;
+
+  	// update dependants map
+  	while (!keypath.isRoot) {
+  		map = viewmodel.depsMap[group];
+  		parent = map[keypath.parent.str];
+
+  		parent["_" + keypath.str] -= 1;
+
+  		if (!parent["_" + keypath.str]) {
+  			// remove from parent deps map
+  			removeFromArray(parent, keypath);
+  			parent["_" + keypath.str] = undefined;
+  		}
+
+  		keypath = keypath.parent;
+  	}
+  }
+
+  var Viewmodel = function (options) {
+  	var adapt = options.adapt;
+  	var data = options.data;
+  	var ractive = options.ractive;
+  	var computed = options.computed;
+  	var mappings = options.mappings;
+  	var key;
+  	var mapping;
+
+  	// TODO is it possible to remove this reference?
+  	this.ractive = ractive;
+
+  	this.adaptors = adapt;
+  	this.onchange = options.onchange;
+
+  	this.cache = {}; // we need to be able to use hasOwnProperty, so can't inherit from null
+  	this.cacheMap = create(null);
+
+  	this.deps = {
+  		computed: create(null),
+  		"default": create(null)
+  	};
+  	this.depsMap = {
+  		computed: create(null),
+  		"default": create(null)
+  	};
+
+  	this.patternObservers = [];
+
+  	this.specials = create(null);
+
+  	this.wrapped = create(null);
+  	this.computations = create(null);
+
+  	this.captureGroups = [];
+  	this.unresolvedImplicitDependencies = [];
+
+  	this.changes = [];
+  	this.implicitChanges = {};
+  	this.noCascade = {};
+
+  	this.data = data;
+
+  	// set up explicit mappings
+  	this.mappings = create(null);
+  	for (key in mappings) {
+  		this.map(getKeypath(key), mappings[key]);
+  	}
+
+  	if (data) {
+  		// if data exists locally, but is missing on the parent,
+  		// we transfer ownership to the parent
+  		for (key in data) {
+  			if ((mapping = this.mappings[key]) && mapping.getValue() === undefined) {
+  				mapping.setValue(data[key]);
+  			}
+  		}
+  	}
+
+  	for (key in computed) {
+  		if (mappings && key in mappings) {
+  			fatal("Cannot map to a computed property ('%s')", key);
+  		}
+
+  		this.compute(getKeypath(key), computed[key]);
+  	}
+
+  	this.ready = true;
+  };
+
+  Viewmodel.prototype = {
+  	adapt: prototype_adapt,
+  	applyChanges: applyChanges,
+  	capture: capture,
+  	clearCache: clearCache,
+  	compute: compute,
+  	get: viewmodel_prototype_get,
+  	init: viewmodel_prototype_init,
+  	map: prototype_map,
+  	mark: mark,
+  	merge: merge,
+  	register: register,
+  	release: release,
+  	reset: reset,
+  	set: prototype_set,
+  	smartUpdate: smartUpdate,
+  	teardown: prototype_teardown,
+  	unregister: unregister
+  };
+
+  var viewmodel_Viewmodel = Viewmodel;
+
+  function HookQueue(event) {
+  	this.hook = new hooks_Hook(event);
+  	this.inProcess = {};
+  	this.queue = {};
+  }
+
+  HookQueue.prototype = {
+
+  	constructor: HookQueue,
+
+  	begin: function (ractive) {
+  		this.inProcess[ractive._guid] = true;
+  	},
+
+  	end: function (ractive) {
+
+  		var parent = ractive.parent;
+
+  		// If this is *isn't* a child of a component that's in process,
+  		// it should call methods or fire at this point
+  		if (!parent || !this.inProcess[parent._guid]) {
+  			fire(this, ractive);
+  		}
+  		// elsewise, handoff to parent to fire when ready
+  		else {
+  			getChildQueue(this.queue, parent).push(ractive);
+  		}
+
+  		delete this.inProcess[ractive._guid];
+  	}
+  };
+
+  function getChildQueue(queue, ractive) {
+  	return queue[ractive._guid] || (queue[ractive._guid] = []);
+  }
+
+  function fire(hookQueue, ractive) {
+
+  	var childQueue = getChildQueue(hookQueue.queue, ractive);
+
+  	hookQueue.hook.fire(ractive);
+
+  	// queue is "live" because components can end up being
+  	// added while hooks fire on parents that modify data values.
+  	while (childQueue.length) {
+  		fire(hookQueue, childQueue.shift());
+  	}
+
+  	delete hookQueue.queue[ractive._guid];
+  }
+
+  var hooks_HookQueue = HookQueue;
+
+  var helpers_getComputationSignatures = getComputationSignatures;
+
+  var pattern = /\$\{([^\}]+)\}/g;
+  function getComputationSignatures(ractive, computed) {
+  	var signatures = {},
+  	    key;
+
+  	for (key in computed) {
+  		signatures[key] = getComputationSignature(ractive, key, computed[key]);
+  	}
+
+  	return signatures;
+  }
+
+  function getComputationSignature(ractive, key, signature) {
+  	var getter, setter;
+
+  	if (typeof signature === "function") {
+  		getter = helpers_getComputationSignatures__bind(signature, ractive);
+  	}
+
+  	if (typeof signature === "string") {
+  		getter = createFunctionFromString(ractive, signature);
+  	}
+
+  	if (typeof signature === "object") {
+  		if (typeof signature.get === "string") {
+  			getter = createFunctionFromString(ractive, signature.get);
+  		} else if (typeof signature.get === "function") {
+  			getter = helpers_getComputationSignatures__bind(signature.get, ractive);
+  		} else {
+  			fatal("`%s` computation must have a `get()` method", key);
+  		}
+
+  		if (typeof signature.set === "function") {
+  			setter = helpers_getComputationSignatures__bind(signature.set, ractive);
+  		}
+  	}
+
+  	return { getter: getter, setter: setter };
+  }
+
+  function createFunctionFromString(ractive, str) {
+  	var functionBody, hasThis, fn;
+
+  	functionBody = "return (" + str.replace(pattern, function (match, keypath) {
+  		hasThis = true;
+  		return "__ractive.get(\"" + keypath + "\")";
+  	}) + ");";
+
+  	if (hasThis) {
+  		functionBody = "var __ractive = this; " + functionBody;
+  	}
+
+  	fn = new Function(functionBody);
+  	return hasThis ? fn.bind(ractive) : fn;
+  }
+
+  function helpers_getComputationSignatures__bind(fn, context) {
+  	return /this/.test(fn.toString()) ? fn.bind(context) : fn;
+  }
+
+  var constructHook = new hooks_Hook("construct");
+  var configHook = new hooks_Hook("config");
+  var initHook = new hooks_HookQueue("init");
+  var initialise__uid = 0;
+
+  var initialise__registryNames = ["adaptors", "components", "decorators", "eas
