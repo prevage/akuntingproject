@@ -11702,4 +11702,304 @@
   			value = retrieve(this, keypath);
   		}
 
- 
+  		cache[keypathStr] = value;
+  	} else {
+  		value = cache[keypathStr];
+  	}
+
+  	if (!options.noUnwrap && (wrapped = this.wrapped[keypathStr])) {
+  		value = wrapped.get();
+  	}
+
+  	if (keypath.isRoot && options.fullRootGet) {
+  		for (key in this.mappings) {
+  			value[key] = this.mappings[key].getValue();
+  		}
+  	}
+
+  	return value === FAILED_LOOKUP ? void 0 : value;
+  }
+
+  function retrieve(viewmodel, keypath) {
+
+  	var parentValue, cacheMap, value, wrapped;
+
+  	parentValue = viewmodel.get(keypath.parent);
+
+  	if (wrapped = viewmodel.wrapped[keypath.parent.str]) {
+  		parentValue = wrapped.get();
+  	}
+
+  	if (parentValue === null || parentValue === undefined) {
+  		return;
+  	}
+
+  	// update cache map
+  	if (!(cacheMap = viewmodel.cacheMap[keypath.parent.str])) {
+  		viewmodel.cacheMap[keypath.parent.str] = [keypath.str];
+  	} else {
+  		if (cacheMap.indexOf(keypath.str) === -1) {
+  			cacheMap.push(keypath.str);
+  		}
+  	}
+
+  	// If this property doesn't exist, we return a sentinel value
+  	// so that we know to query parent scope (if such there be)
+  	if (typeof parentValue === "object" && !(keypath.lastKey in parentValue)) {
+  		return viewmodel.cache[keypath.str] = FAILED_LOOKUP;
+  	}
+
+  	value = parentValue[keypath.lastKey];
+
+  	// Do we have an adaptor for this value?
+  	viewmodel.adapt(keypath.str, value, false);
+
+  	// Update cache
+  	viewmodel.cache[keypath.str] = value;
+  	return value;
+  }
+
+  var viewmodel_prototype_init = Viewmodel$init;
+
+  function Viewmodel$init() {
+  	var key;
+
+  	for (key in this.computations) {
+  		this.computations[key].init(this);
+  	}
+  }
+
+  var prototype_map = Viewmodel$map;
+
+  function Viewmodel$map(key, options) {
+  	var mapping = this.mappings[key.str] = new Mapping(key, options);
+  	mapping.initViewmodel(this);
+  	return mapping;
+  }
+
+  var Mapping = function (localKey, options) {
+  	this.localKey = localKey;
+  	this.keypath = options.keypath;
+  	this.origin = options.origin;
+
+  	this.deps = [];
+  	this.unresolved = [];
+
+  	this.resolved = false;
+  };
+
+  Mapping.prototype = {
+  	forceResolution: function () {
+  		// TODO warn, as per #1692?
+  		this.keypath = this.localKey;
+  		this.setup();
+  	},
+
+  	get: function (keypath, options) {
+  		if (!this.resolved) {
+  			return undefined;
+  		}
+  		return this.origin.get(this.map(keypath), options);
+  	},
+
+  	getValue: function () {
+  		if (!this.keypath) {
+  			return undefined;
+  		}
+  		return this.origin.get(this.keypath);
+  	},
+
+  	initViewmodel: function (viewmodel) {
+  		this.local = viewmodel;
+  		this.setup();
+  	},
+
+  	map: function (keypath) {
+  		if (typeof this.keypath === undefined) {
+  			return this.localKey;
+  		}
+  		return keypath.replace(this.localKey, this.keypath);
+  	},
+
+  	register: function (keypath, dependant, group) {
+  		this.deps.push({ keypath: keypath, dep: dependant, group: group });
+
+  		if (this.resolved) {
+  			this.origin.register(this.map(keypath), dependant, group);
+  		}
+  	},
+
+  	resolve: function (keypath) {
+  		if (this.keypath !== undefined) {
+  			this.unbind(true);
+  		}
+
+  		this.keypath = keypath;
+  		this.setup();
+  	},
+
+  	set: function (keypath, value) {
+  		if (!this.resolved) {
+  			this.forceResolution();
+  		}
+
+  		this.origin.set(this.map(keypath), value);
+  	},
+
+  	setup: function () {
+  		var _this = this;
+
+  		if (this.keypath === undefined) {
+  			return;
+  		}
+
+  		this.resolved = true;
+
+  		// accumulated dependants can now be registered
+  		if (this.deps.length) {
+  			this.deps.forEach(function (d) {
+  				var keypath = _this.map(d.keypath);
+  				_this.origin.register(keypath, d.dep, d.group);
+
+  				// TODO this is a bit of a red flag... all deps should be the same?
+  				if (d.dep.setValue) {
+  					d.dep.setValue(_this.origin.get(keypath));
+  				} else if (d.dep.invalidate) {
+  					d.dep.invalidate();
+  				} else {
+  					throw new Error("An unexpected error occurred. Please raise an issue at https://github.com/ractivejs/ractive/issues - thanks!");
+  				}
+  			});
+
+  			this.origin.mark(this.keypath);
+  		}
+  	},
+
+  	setValue: function (value) {
+  		if (!this.keypath) {
+  			throw new Error("Mapping does not have keypath, cannot set value. Please raise an issue at https://github.com/ractivejs/ractive/issues - thanks!");
+  		}
+
+  		this.origin.set(this.keypath, value);
+  	},
+
+  	unbind: function (keepLocal) {
+  		var _this = this;
+
+  		if (!keepLocal) {
+  			delete this.local.mappings[this.localKey];
+  		}
+
+  		if (!this.resolved) {
+  			return;
+  		}
+
+  		this.deps.forEach(function (d) {
+  			_this.origin.unregister(_this.map(d.keypath), d.dep, d.group);
+  		});
+
+  		if (this.tracker) {
+  			this.origin.unregister(this.keypath, this.tracker);
+  		}
+  	},
+
+  	unregister: function (keypath, dependant, group) {
+  		var deps, i;
+
+  		if (!this.resolved) {
+  			return;
+  		}
+
+  		deps = this.deps;
+  		i = deps.length;
+
+  		while (i--) {
+  			if (deps[i].dep === dependant) {
+  				deps.splice(i, 1);
+  				break;
+  			}
+  		}
+  		this.origin.unregister(this.map(keypath), dependant, group);
+  	}
+  };
+
+  var mark = Viewmodel$mark;
+
+  function Viewmodel$mark(keypath, options) {
+  	var computation,
+  	    keypathStr = keypath.str;
+
+  	// implicit changes (i.e. `foo.length` on `ractive.push('foo',42)`)
+  	// should not be picked up by pattern observers
+  	if (options) {
+  		if (options.implicit) {
+  			this.implicitChanges[keypathStr] = true;
+  		}
+  		if (options.noCascade) {
+  			this.noCascade[keypathStr] = true;
+  		}
+  	}
+
+  	if (computation = this.computations[keypathStr]) {
+  		computation.invalidate();
+  	}
+
+  	if (this.changes.indexOf(keypath) === -1) {
+  		this.changes.push(keypath);
+  	}
+
+  	// pass on keepExistingWrapper, if we can
+  	var keepExistingWrapper = options ? options.keepExistingWrapper : false;
+
+  	this.clearCache(keypathStr, keepExistingWrapper);
+
+  	if (this.ready) {
+  		this.onchange();
+  	}
+  }
+
+  var mapOldToNewIndex = function (oldArray, newArray) {
+  	var usedIndices, firstUnusedIndex, newIndices, changed;
+
+  	usedIndices = {};
+  	firstUnusedIndex = 0;
+
+  	newIndices = oldArray.map(function (item, i) {
+  		var index, start, len;
+
+  		start = firstUnusedIndex;
+  		len = newArray.length;
+
+  		do {
+  			index = newArray.indexOf(item, start);
+
+  			if (index === -1) {
+  				changed = true;
+  				return -1;
+  			}
+
+  			start = index + 1;
+  		} while (usedIndices[index] && start < len);
+
+  		// keep track of the first unused index, so we don't search
+  		// the whole of newArray for each item in oldArray unnecessarily
+  		if (index === firstUnusedIndex) {
+  			firstUnusedIndex += 1;
+  		}
+
+  		if (index !== i) {
+  			changed = true;
+  		}
+
+  		usedIndices[index] = true;
+  		return index;
+  	});
+
+  	return newIndices;
+  };
+
+  var merge = Viewmodel$merge;
+
+  var comparators = {};
+  function Viewmodel$merge(keypath, currentArray, array, options) {
+  	var oldArray, newArray, com
