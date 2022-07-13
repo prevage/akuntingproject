@@ -13055,4 +13055,280 @@
 
   var Component_prototype_unbind__teardownHook = new hooks_Hook("teardown");
   function Component$unbind() {
-  	var
+  	var instance = this.instance;
+
+  	this.resolvers.forEach(methodCallers__unbind);
+
+  	removeFromLiveComponentQueries(this);
+
+  	instance._observers.forEach(cancel);
+
+  	// teardown the instance
+  	instance.fragment.unbind();
+  	instance.viewmodel.teardown();
+
+  	if (instance.fragment.rendered && instance.el.__ractive_instances__) {
+  		removeFromArray(instance.el.__ractive_instances__, instance);
+  	}
+
+  	Component_prototype_unbind__teardownHook.fire(instance);
+  }
+
+  function removeFromLiveComponentQueries(component) {
+  	var instance, query;
+
+  	instance = component.root;
+
+  	do {
+  		if (query = instance._liveComponentQueries["_" + component.name]) {
+  			query._remove(component);
+  		}
+  	} while (instance = instance.parent);
+  }
+
+  var Component_prototype_unrender = Component$unrender;
+
+  function Component$unrender(shouldDestroy) {
+  	this.shouldDestroy = shouldDestroy;
+  	this.instance.unrender();
+  }
+
+  var Component = function (options, Constructor) {
+  	this.init(options, Constructor);
+  };
+
+  Component.prototype = {
+  	detach: Component_prototype_detach,
+  	find: Component_prototype_find,
+  	findAll: Component_prototype_findAll,
+  	findAllComponents: Component_prototype_findAllComponents,
+  	findComponent: Component_prototype_findComponent,
+  	findNextNode: Component_prototype_findNextNode,
+  	firstNode: Component_prototype_firstNode,
+  	init: Component_prototype_init,
+  	rebind: Component_prototype_rebind,
+  	render: Component_prototype_render,
+  	toString: Component_prototype_toString,
+  	unbind: Component_prototype_unbind,
+  	unrender: Component_prototype_unrender
+  };
+
+  var _Component = Component;
+
+  var Comment = function (options) {
+  	this.type = COMMENT;
+  	this.value = options.template.c;
+  };
+
+  Comment.prototype = {
+  	detach: shared_detach,
+
+  	firstNode: function () {
+  		return this.node;
+  	},
+
+  	render: function () {
+  		if (!this.node) {
+  			this.node = document.createComment(this.value);
+  		}
+
+  		return this.node;
+  	},
+
+  	toString: function () {
+  		return "<!--" + this.value + "-->";
+  	},
+
+  	unrender: function (shouldDestroy) {
+  		if (shouldDestroy) {
+  			this.node.parentNode.removeChild(this.node);
+  		}
+  	}
+  };
+
+  var items_Comment = Comment;
+
+  var Yielder = function (options) {
+  	var container, component;
+
+  	this.type = YIELDER;
+
+  	this.container = container = options.parentFragment.root;
+  	this.component = component = container.component;
+
+  	this.container = container;
+  	this.containerFragment = options.parentFragment;
+  	this.parentFragment = component.parentFragment;
+
+  	var name = this.name = options.template.n || "";
+
+  	var template = container._inlinePartials[name];
+
+  	if (!template) {
+  		warnIfDebug("Could not find template for partial \"" + name + "\"", { ractive: options.root });
+  		template = [];
+  	}
+
+  	this.fragment = new virtualdom_Fragment({
+  		owner: this,
+  		root: container.parent,
+  		template: template,
+  		pElement: this.containerFragment.pElement
+  	});
+
+  	// even though only one yielder is allowed, we need to have an array of them
+  	// as it's possible to cause a yielder to be created before the last one
+  	// was destroyed in the same turn of the runloop
+  	if (!isArray(component.yielders[name])) {
+  		component.yielders[name] = [this];
+  	} else {
+  		component.yielders[name].push(this);
+  	}
+
+  	global_runloop.scheduleTask(function () {
+  		if (component.yielders[name].length > 1) {
+  			throw new Error("A component template can only have one {{yield" + (name ? " " + name : "") + "}} declaration at a time");
+  		}
+  	});
+  };
+
+  Yielder.prototype = {
+  	detach: function () {
+  		return this.fragment.detach();
+  	},
+
+  	find: function (selector) {
+  		return this.fragment.find(selector);
+  	},
+
+  	findAll: function (selector, query) {
+  		return this.fragment.findAll(selector, query);
+  	},
+
+  	findComponent: function (selector) {
+  		return this.fragment.findComponent(selector);
+  	},
+
+  	findAllComponents: function (selector, query) {
+  		return this.fragment.findAllComponents(selector, query);
+  	},
+
+  	findNextNode: function () {
+  		return this.containerFragment.findNextNode(this);
+  	},
+
+  	firstNode: function () {
+  		return this.fragment.firstNode();
+  	},
+
+  	getValue: function (options) {
+  		return this.fragment.getValue(options);
+  	},
+
+  	render: function () {
+  		return this.fragment.render();
+  	},
+
+  	unbind: function () {
+  		this.fragment.unbind();
+  	},
+
+  	unrender: function (shouldDestroy) {
+  		this.fragment.unrender(shouldDestroy);
+  		removeFromArray(this.component.yielders[this.name], this);
+  	},
+
+  	rebind: function (oldKeypath, newKeypath) {
+  		this.fragment.rebind(oldKeypath, newKeypath);
+  	},
+
+  	toString: function () {
+  		return this.fragment.toString();
+  	}
+  };
+
+  var items_Yielder = Yielder;
+
+  var Doctype = function (options) {
+  	this.declaration = options.template.a;
+  };
+
+  Doctype.prototype = {
+  	init: noop,
+  	render: noop,
+  	unrender: noop,
+  	teardown: noop,
+  	toString: function () {
+  		return "<!DOCTYPE" + this.declaration + ">";
+  	}
+  };
+
+  var items_Doctype = Doctype;
+
+  var Fragment_prototype_init = Fragment$init;
+
+  function Fragment$init(options) {
+  	var _this = this;
+
+  	this.owner = options.owner; // The item that owns this fragment - an element, section, partial, or attribute
+  	this.parent = this.owner.parentFragment;
+
+  	// inherited properties
+  	this.root = options.root;
+  	this.pElement = options.pElement;
+  	this.context = options.context;
+  	this.index = options.index;
+  	this.key = options.key;
+  	this.registeredIndexRefs = [];
+
+  	// encapsulated styles should be inherited until they get applied by an element
+  	this.cssIds = "cssIds" in options ? options.cssIds : this.parent ? this.parent.cssIds : null;
+
+  	this.items = options.template.map(function (template, i) {
+  		return createItem({
+  			parentFragment: _this,
+  			pElement: options.pElement,
+  			template: template,
+  			index: i
+  		});
+  	});
+
+  	this.value = this.argsList = null;
+  	this.dirtyArgs = this.dirtyValue = true;
+
+  	this.bound = true;
+  }
+
+  function createItem(options) {
+  	if (typeof options.template === "string") {
+  		return new items_Text(options);
+  	}
+
+  	switch (options.template.t) {
+  		case YIELDER:
+  			return new items_Yielder(options);
+  		case INTERPOLATOR:
+  			return new items_Interpolator(options);
+  		case SECTION:
+  			return new _Section(options);
+  		case TRIPLE:
+  			return new _Triple(options);
+  		case ELEMENT:
+  			var constructor = undefined;
+  			if (constructor = Component_getComponent(options.parentFragment.root, options.template.e)) {
+  				return new _Component(options, constructor);
+  			}
+  			return new _Element(options);
+  		case PARTIAL:
+  			return new _Partial(options);
+  		case COMMENT:
+  			return new items_Comment(options);
+  		case DOCTYPE:
+  			return new items_Doctype(options);
+
+  		default:
+  			throw new Error("Something very strange happened. Please file an issue at https://github.com/ractivejs/ractive/issues. Thanks!");
+  	}
+  }
+
+  var Fragment_prototype_rebind = Fragment$rebind
