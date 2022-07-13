@@ -12804,3 +12804,255 @@
 
   	partials = partials || {};
   	utils_object__extend(inlinePartials, partials);
+
+  	// Make contents available as a {{>content}} partial
+  	partials.content = yieldTemplate || [];
+
+  	// set a default partial for yields with no name
+  	inlinePartials[""] = partials.content;
+
+  	if (Component.defaults.el) {
+  		warnIfDebug("The <%s/> component has a default `el` property; it has been disregarded", component.name);
+  	}
+
+  	// find container
+  	fragment = parentFragment;
+  	while (fragment) {
+  		if (fragment.owner.type === YIELDER) {
+  			container = fragment.owner.container;
+  			break;
+  		}
+
+  		fragment = fragment.parent;
+  	}
+
+  	// each attribute represents either a) data or b) a mapping
+  	if (attributes) {
+  		Object.keys(attributes).forEach(function (key) {
+  			var attribute = attributes[key],
+  			    parsed,
+  			    resolver;
+
+  			if (typeof attribute === "string") {
+  				// it's static data
+  				parsed = parseJSON(attribute);
+  				data[key] = parsed ? parsed.value : attribute;
+  			} else if (attribute === 0) {
+  				// it had no '=', so we'll call it true
+  				data[key] = true;
+  			} else if (isArray(attribute)) {
+  				// this represents dynamic data
+  				if (isSingleInterpolator(attribute)) {
+  					mappings[key] = {
+  						origin: component.root.viewmodel,
+  						keypath: undefined
+  					};
+
+  					resolver = createResolver(component, attribute[0], function (keypath) {
+  						if (keypath.isSpecial) {
+  							if (ready) {
+  								instance.set(key, keypath.value); // TODO use viewmodel?
+  							} else {
+  								data[key] = keypath.value;
+
+  								// TODO errr.... would be better if we didn't have to do this
+  								delete mappings[key];
+  							}
+  						} else {
+  							if (ready) {
+  								instance.viewmodel.mappings[key].resolve(keypath);
+  							} else {
+  								// resolved immediately
+  								mappings[key].keypath = keypath;
+  							}
+  						}
+  					});
+  				} else {
+  					resolver = new initialise_ComplexParameter(component, attribute, function (value) {
+  						if (ready) {
+  							instance.set(key, value); // TODO use viewmodel?
+  						} else {
+  							data[key] = value;
+  						}
+  					});
+  				}
+
+  				resolvers.push(resolver);
+  			} else {
+  				throw new Error("erm wut");
+  			}
+  		});
+  	}
+
+  	instance = create(Component.prototype);
+
+  	initialise(instance, {
+  		el: null,
+  		append: true,
+  		data: data,
+  		partials: partials,
+  		magic: ractive.magic || Component.defaults.magic,
+  		modifyArrays: ractive.modifyArrays,
+  		// need to inherit runtime parent adaptors
+  		adapt: ractive.adapt
+  	}, {
+  		parent: ractive,
+  		component: component,
+  		container: container,
+  		mappings: mappings,
+  		inlinePartials: inlinePartials,
+  		cssIds: parentFragment.cssIds
+  	});
+
+  	ready = true;
+  	component.resolvers = resolvers;
+
+  	return instance;
+  };
+
+  function createResolver(component, template, callback) {
+  	var resolver;
+
+  	if (template.r) {
+  		resolver = Resolvers_createReferenceResolver(component, template.r, callback);
+  	} else if (template.x) {
+  		resolver = new Resolvers_ExpressionResolver(component, component.parentFragment, template.x, callback);
+  	} else if (template.rx) {
+  		resolver = new ReferenceExpressionResolver_ReferenceExpressionResolver(component, template.rx, callback);
+  	}
+
+  	return resolver;
+  }
+
+  function isSingleInterpolator(template) {
+  	return template.length === 1 && template[0].t === INTERPOLATOR;
+  }
+
+  // TODO how should event arguments be handled? e.g.
+  // <widget on-foo='bar:1,2,3'/>
+  // The event 'bar' will be fired on the parent instance
+  // when 'foo' fires on the child, but the 1,2,3 arguments
+  // will be lost
+
+  var initialise_propagateEvents = propagateEvents;
+
+  function propagateEvents(component, eventsDescriptor) {
+  	var eventName;
+
+  	for (eventName in eventsDescriptor) {
+  		if (eventsDescriptor.hasOwnProperty(eventName)) {
+  			propagateEvent(component.instance, component.root, eventName, eventsDescriptor[eventName]);
+  		}
+  	}
+  }
+
+  function propagateEvent(childInstance, parentInstance, eventName, proxyEventName) {
+  	if (typeof proxyEventName !== "string") {
+  		fatal("Components currently only support simple events - you cannot include arguments. Sorry!");
+  	}
+
+  	childInstance.on(eventName, function () {
+  		var event, args;
+
+  		// semi-weak test, but what else? tag the event obj ._isEvent ?
+  		if (arguments.length && arguments[0] && arguments[0].node) {
+  			event = Array.prototype.shift.call(arguments);
+  		}
+
+  		args = Array.prototype.slice.call(arguments);
+
+  		shared_fireEvent(parentInstance, proxyEventName, { event: event, args: args });
+
+  		// cancel bubbling
+  		return false;
+  	});
+  }
+
+  var initialise_updateLiveQueries = function (component) {
+  	var ancestor, query;
+
+  	// If there's a live query for this component type, add it
+  	ancestor = component.root;
+  	while (ancestor) {
+  		if (query = ancestor._liveComponentQueries["_" + component.name]) {
+  			query.push(component.instance);
+  		}
+
+  		ancestor = ancestor.parent;
+  	}
+  };
+
+  var Component_prototype_init = Component$init;
+  function Component$init(options, Component) {
+  	var parentFragment, root;
+
+  	if (!Component) {
+  		throw new Error("Component \"" + this.name + "\" not found");
+  	}
+
+  	parentFragment = this.parentFragment = options.parentFragment;
+  	root = parentFragment.root;
+
+  	this.root = root;
+  	this.type = COMPONENT;
+  	this.name = options.template.e;
+  	this.index = options.index;
+  	this.indexRefBindings = {};
+  	this.yielders = {};
+  	this.resolvers = [];
+
+  	createInstance(this, Component, options.template.a, options.template.f, options.template.p);
+  	initialise_propagateEvents(this, options.template.v);
+
+  	// intro, outro and decorator directives have no effect
+  	if (options.template.t0 || options.template.t1 || options.template.t2 || options.template.o) {
+  		warnIfDebug("The \"intro\", \"outro\" and \"decorator\" directives have no effect on components", { ractive: this.instance });
+  	}
+
+  	initialise_updateLiveQueries(this);
+  }
+
+  var Component_prototype_rebind = Component$rebind;
+
+  function Component$rebind(oldKeypath, newKeypath) {
+  	var query;
+
+  	this.resolvers.forEach(rebind);
+
+  	for (var k in this.yielders) {
+  		if (this.yielders[k][0]) {
+  			rebind(this.yielders[k][0]);
+  		}
+  	}
+
+  	if (query = this.root._liveComponentQueries["_" + this.name]) {
+  		query._makeDirty();
+  	}
+
+  	function rebind(x) {
+  		x.rebind(oldKeypath, newKeypath);
+  	}
+  }
+
+  var Component_prototype_render = Component$render;
+
+  function Component$render() {
+  	var instance = this.instance;
+
+  	instance.render(this.parentFragment.getNode());
+
+  	this.rendered = true;
+  	return instance.fragment.detach();
+  }
+
+  var Component_prototype_toString = Component$toString;
+
+  function Component$toString() {
+  	return this.instance.fragment.toString();
+  }
+
+  var Component_prototype_unbind = Component$unbind;
+
+  var Component_prototype_unbind__teardownHook = new hooks_Hook("teardown");
+  function Component$unbind() {
+  	var
