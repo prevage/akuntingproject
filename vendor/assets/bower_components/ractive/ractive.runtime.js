@@ -13331,4 +13331,269 @@
   	}
   }
 
-  var Fragment_prototype_rebind = Fragment$rebind
+  var Fragment_prototype_rebind = Fragment$rebind;
+  function Fragment$rebind(oldKeypath, newKeypath) {
+
+  	// assign new context keypath if needed
+  	if (!this.owner || this.owner.hasContext) {
+  		assignNewKeypath(this, "context", oldKeypath, newKeypath);
+  	}
+
+  	this.items.forEach(function (item) {
+  		if (item.rebind) {
+  			item.rebind(oldKeypath, newKeypath);
+  		}
+  	});
+  }
+
+  var Fragment_prototype_render = Fragment$render;
+
+  function Fragment$render() {
+  	var result;
+
+  	if (this.items.length === 1) {
+  		result = this.items[0].render();
+  	} else {
+  		result = document.createDocumentFragment();
+
+  		this.items.forEach(function (item) {
+  			result.appendChild(item.render());
+  		});
+  	}
+
+  	this.rendered = true;
+  	return result;
+  }
+
+  var Fragment_prototype_toString = Fragment$toString;
+
+  function Fragment$toString(escape) {
+  	if (!this.items) {
+  		return "";
+  	}
+
+  	return this.items.map(escape ? toEscapedString : Fragment_prototype_toString__toString).join("");
+  }
+
+  function Fragment_prototype_toString__toString(item) {
+  	return item.toString();
+  }
+
+  function toEscapedString(item) {
+  	return item.toString(true);
+  }
+
+  var Fragment_prototype_unbind = Fragment$unbind;
+
+  function Fragment$unbind() {
+  	if (!this.bound) {
+  		return;
+  	}
+
+  	this.items.forEach(unbindItem);
+  	this.bound = false;
+  }
+
+  function unbindItem(item) {
+  	if (item.unbind) {
+  		item.unbind();
+  	}
+  }
+
+  var Fragment_prototype_unrender = Fragment$unrender;
+
+  function Fragment$unrender(shouldDestroy) {
+  	if (!this.rendered) {
+  		throw new Error("Attempted to unrender a fragment that was not rendered");
+  	}
+
+  	this.items.forEach(function (i) {
+  		return i.unrender(shouldDestroy);
+  	});
+  	this.rendered = false;
+  }
+
+  var Fragment = function (options) {
+  	this.init(options);
+  };
+
+  Fragment.prototype = {
+  	bubble: prototype_bubble,
+  	detach: Fragment_prototype_detach,
+  	find: Fragment_prototype_find,
+  	findAll: Fragment_prototype_findAll,
+  	findAllComponents: Fragment_prototype_findAllComponents,
+  	findComponent: Fragment_prototype_findComponent,
+  	findNextNode: prototype_findNextNode,
+  	firstNode: prototype_firstNode,
+  	getArgsList: getArgsList,
+  	getNode: getNode,
+  	getValue: prototype_getValue,
+  	init: Fragment_prototype_init,
+  	rebind: Fragment_prototype_rebind,
+  	registerIndexRef: function (idx) {
+  		var idxs = this.registeredIndexRefs;
+  		if (idxs.indexOf(idx) === -1) {
+  			idxs.push(idx);
+  		}
+  	},
+  	render: Fragment_prototype_render,
+  	toString: Fragment_prototype_toString,
+  	unbind: Fragment_prototype_unbind,
+  	unregisterIndexRef: function (idx) {
+  		var idxs = this.registeredIndexRefs;
+  		idxs.splice(idxs.indexOf(idx), 1);
+  	},
+  	unrender: Fragment_prototype_unrender
+  };
+
+  var virtualdom_Fragment = Fragment;
+
+  var prototype_reset = Ractive$reset;
+  var shouldRerender = ["template", "partials", "components", "decorators", "events"],
+      resetHook = new hooks_Hook("reset");
+  function Ractive$reset(data) {
+  	var promise, wrapper, changes, i, rerender;
+
+  	data = data || {};
+
+  	if (typeof data !== "object") {
+  		throw new Error("The reset method takes either no arguments, or an object containing new data");
+  	}
+
+  	// If the root object is wrapped, try and use the wrapper's reset value
+  	if ((wrapper = this.viewmodel.wrapped[""]) && wrapper.reset) {
+  		if (wrapper.reset(data) === false) {
+  			// reset was rejected, we need to replace the object
+  			this.viewmodel.reset(data);
+  		}
+  	} else {
+  		this.viewmodel.reset(data);
+  	}
+
+  	// reset config items and track if need to rerender
+  	changes = config_config.reset(this);
+
+  	i = changes.length;
+  	while (i--) {
+  		if (shouldRerender.indexOf(changes[i]) > -1) {
+  			rerender = true;
+  			break;
+  		}
+  	}
+
+  	if (rerender) {
+  		var component = undefined;
+
+  		this.viewmodel.mark(rootKeypath);
+
+  		// Is this is a component, we need to set the `shouldDestroy`
+  		// flag, otherwise it will assume by default that a parent node
+  		// will be detached, and therefore it doesn't need to bother
+  		// detaching its own nodes
+  		if (component = this.component) {
+  			component.shouldDestroy = true;
+  		}
+
+  		this.unrender();
+
+  		if (component) {
+  			component.shouldDestroy = false;
+  		}
+
+  		// If the template changed, we need to destroy the parallel DOM
+  		// TODO if we're here, presumably it did?
+  		if (this.fragment.template !== this.template) {
+  			this.fragment.unbind();
+
+  			this.fragment = new virtualdom_Fragment({
+  				template: this.template,
+  				root: this,
+  				owner: this
+  			});
+  		}
+
+  		promise = this.render(this.el, this.anchor);
+  	} else {
+  		promise = global_runloop.start(this, true);
+  		this.viewmodel.mark(rootKeypath);
+  		global_runloop.end();
+  	}
+
+  	resetHook.fire(this, data);
+
+  	return promise;
+  }
+
+  var resetPartial = function (name, partial) {
+  	var promise,
+  	    collection = [];
+
+  	function collect(source, dest, ractive) {
+  		// if this is a component and it has its own partial, bail
+  		if (ractive && ractive.partials[name]) return;
+
+  		source.forEach(function (item) {
+  			// queue to rerender if the item is a partial and the current name matches
+  			if (item.type === PARTIAL && item.getPartialName() === name) {
+  				dest.push(item);
+  			}
+
+  			// if it has a fragment, process its items
+  			if (item.fragment) {
+  				collect(item.fragment.items, dest, ractive);
+  			}
+
+  			// or if it has fragments
+  			if (isArray(item.fragments)) {
+  				collect(item.fragments, dest, ractive);
+  			}
+
+  			// or if it is itself a fragment, process its items
+  			else if (isArray(item.items)) {
+  				collect(item.items, dest, ractive);
+  			}
+
+  			// or if it is a component, step in and process its items
+  			else if (item.type === COMPONENT && item.instance) {
+  				collect(item.instance.fragment.items, dest, item.instance);
+  			}
+
+  			// if the item is an element, process its attributes too
+  			if (item.type === ELEMENT) {
+  				if (isArray(item.attributes)) {
+  					collect(item.attributes, dest, ractive);
+  				}
+
+  				if (isArray(item.conditionalAttributes)) {
+  					collect(item.conditionalAttributes, dest, ractive);
+  				}
+  			}
+  		});
+  	}
+
+  	collect(this.fragment.items, collection);
+  	this.partials[name] = partial;
+
+  	promise = global_runloop.start(this, true);
+
+  	collection.forEach(function (item) {
+  		item.value = undefined;
+  		item.setValue(name);
+  	});
+
+  	global_runloop.end();
+
+  	return promise;
+  };
+
+  // TODO should resetTemplate be asynchronous? i.e. should it be a case
+  // of outro, update template, intro? I reckon probably not, since that
+  // could be achieved with unrender-resetTemplate-render. Also, it should
+  // conceptually be similar to resetPartial, which couldn't be async
+
+  var resetTemplate = Ractive$resetTemplate;
+  function Ractive$resetTemplate(template) {
+  	var transitionsEnabled, component;
+
+  	template_template.init(null, this, { template: templ
