@@ -13596,4 +13596,286 @@
   function Ractive$resetTemplate(template) {
   	var transitionsEnabled, component;
 
-  	template_template.init(null, this, { template: templ
+  	template_template.init(null, this, { template: template });
+
+  	transitionsEnabled = this.transitionsEnabled;
+  	this.transitionsEnabled = false;
+
+  	// Is this is a component, we need to set the `shouldDestroy`
+  	// flag, otherwise it will assume by default that a parent node
+  	// will be detached, and therefore it doesn't need to bother
+  	// detaching its own nodes
+  	if (component = this.component) {
+  		component.shouldDestroy = true;
+  	}
+
+  	this.unrender();
+
+  	if (component) {
+  		component.shouldDestroy = false;
+  	}
+
+  	// remove existing fragment and create new one
+  	this.fragment.unbind();
+  	this.fragment = new virtualdom_Fragment({
+  		template: this.template,
+  		root: this,
+  		owner: this
+  	});
+
+  	this.render(this.el, this.anchor);
+
+  	this.transitionsEnabled = transitionsEnabled;
+  }
+
+  var reverse = makeArrayMethod("reverse");
+
+  var Ractive_prototype_set = Ractive$set;
+
+  function Ractive$set(keypath, value) {
+  	var map, promise;
+
+  	promise = global_runloop.start(this, true);
+
+  	// Set multiple keypaths in one go
+  	if (isObject(keypath)) {
+  		map = keypath;
+
+  		for (keypath in map) {
+  			if (map.hasOwnProperty(keypath)) {
+  				value = map[keypath];
+  				set(this, keypath, value);
+  			}
+  		}
+  	}
+
+  	// Set a single keypath
+  	else {
+  		set(this, keypath, value);
+  	}
+
+  	global_runloop.end();
+
+  	return promise;
+  }
+
+  function set(ractive, keypath, value) {
+  	keypath = getKeypath(normalise(keypath));
+
+  	if (keypath.isPattern) {
+  		getMatchingKeypaths(ractive, keypath).forEach(function (keypath) {
+  			ractive.viewmodel.set(keypath, value);
+  		});
+  	} else {
+  		ractive.viewmodel.set(keypath, value);
+  	}
+  }
+
+  var shift = makeArrayMethod("shift");
+
+  var prototype_sort = makeArrayMethod("sort");
+
+  var splice = makeArrayMethod("splice");
+
+  var subtract = Ractive$subtract;
+  function Ractive$subtract(keypath, d) {
+  	return shared_add(this, keypath, d === undefined ? -1 : -d);
+  }
+
+  // Teardown. This goes through the root fragment and all its children, removing observers
+  // and generally cleaning up after itself
+
+  var Ractive_prototype_teardown = Ractive$teardown;
+
+  var Ractive_prototype_teardown__teardownHook = new hooks_Hook("teardown");
+  function Ractive$teardown() {
+  	var promise;
+
+  	this.fragment.unbind();
+  	this.viewmodel.teardown();
+
+  	this._observers.forEach(cancel);
+
+  	if (this.fragment.rendered && this.el.__ractive_instances__) {
+  		removeFromArray(this.el.__ractive_instances__, this);
+  	}
+
+  	this.shouldDestroy = true;
+  	promise = this.fragment.rendered ? this.unrender() : utils_Promise.resolve();
+
+  	Ractive_prototype_teardown__teardownHook.fire(this);
+
+  	this._boundFunctions.forEach(deleteFunctionCopy);
+
+  	return promise;
+  }
+
+  function deleteFunctionCopy(bound) {
+  	delete bound.fn[bound.prop];
+  }
+
+  var toggle = Ractive$toggle;
+  function Ractive$toggle(keypath) {
+  	var _this = this;
+
+  	if (typeof keypath !== "string") {
+  		throw new TypeError(badArguments);
+  	}
+
+  	var changes = undefined;
+
+  	if (/\*/.test(keypath)) {
+  		changes = {};
+
+  		getMatchingKeypaths(this, getKeypath(normalise(keypath))).forEach(function (keypath) {
+  			changes[keypath.str] = !_this.viewmodel.get(keypath);
+  		});
+
+  		return this.set(changes);
+  	}
+
+  	return this.set(keypath, !this.get(keypath));
+  }
+
+  var toHTML = Ractive$toHTML;
+
+  function Ractive$toHTML() {
+  	return this.fragment.toString(true);
+  }
+
+  var Ractive_prototype_unrender = Ractive$unrender;
+  var unrenderHook = new hooks_Hook("unrender");
+  function Ractive$unrender() {
+  	var promise, shouldDestroy;
+
+  	if (!this.fragment.rendered) {
+  		warnIfDebug("ractive.unrender() was called on a Ractive instance that was not rendered");
+  		return utils_Promise.resolve();
+  	}
+
+  	promise = global_runloop.start(this, true);
+
+  	// If this is a component, and the component isn't marked for destruction,
+  	// don't detach nodes from the DOM unnecessarily
+  	shouldDestroy = !this.component || this.component.shouldDestroy || this.shouldDestroy;
+
+  	// Cancel any animations in progress
+  	while (this._animations[0]) {
+  		this._animations[0].stop(); // it will remove itself from the index
+  	}
+
+  	this.fragment.unrender(shouldDestroy);
+
+  	removeFromArray(this.el.__ractive_instances__, this);
+
+  	unrenderHook.fire(this);
+
+  	global_runloop.end();
+  	return promise;
+  }
+
+  var unshift = makeArrayMethod("unshift");
+
+  var Ractive_prototype_update = Ractive$update;
+  var updateHook = new hooks_Hook("update");
+  function Ractive$update(keypath) {
+  	var promise;
+
+  	keypath = getKeypath(keypath) || rootKeypath;
+
+  	promise = global_runloop.start(this, true);
+  	this.viewmodel.mark(keypath);
+  	global_runloop.end();
+
+  	updateHook.fire(this, keypath);
+
+  	return promise;
+  }
+
+  var prototype_updateModel = Ractive$updateModel;
+
+  function Ractive$updateModel(keypath, cascade) {
+  	var values, key, bindings;
+
+  	if (typeof keypath === "string" && !cascade) {
+  		bindings = this._twowayBindings[keypath];
+  	} else {
+  		bindings = [];
+
+  		for (key in this._twowayBindings) {
+  			if (!keypath || getKeypath(key).equalsOrStartsWith(keypath)) {
+  				// TODO is this right?
+  				bindings.push.apply(bindings, this._twowayBindings[key]);
+  			}
+  		}
+  	}
+
+  	values = consolidate(this, bindings);
+  	return this.set(values);
+  }
+
+  function consolidate(ractive, bindings) {
+  	var values = {},
+  	    checkboxGroups = [];
+
+  	bindings.forEach(function (b) {
+  		var oldValue, newValue;
+
+  		// special case - radio name bindings
+  		if (b.radioName && !b.element.node.checked) {
+  			return;
+  		}
+
+  		// special case - checkbox name bindings come in groups, so
+  		// we want to get the value once at most
+  		if (b.checkboxName) {
+  			if (!checkboxGroups[b.keypath.str] && !b.changed()) {
+  				checkboxGroups.push(b.keypath);
+  				checkboxGroups[b.keypath.str] = b;
+  			}
+
+  			return;
+  		}
+
+  		oldValue = b.attribute.value;
+  		newValue = b.getValue();
+
+  		if (arrayContentsMatch(oldValue, newValue)) {
+  			return;
+  		}
+
+  		if (!isEqual(oldValue, newValue)) {
+  			values[b.keypath.str] = newValue;
+  		}
+  	});
+
+  	// Handle groups of `<input type='checkbox' name='{{foo}}' ...>`
+  	if (checkboxGroups.length) {
+  		checkboxGroups.forEach(function (keypath) {
+  			var binding, oldValue, newValue;
+
+  			binding = checkboxGroups[keypath.str]; // one to represent the entire group
+  			oldValue = binding.attribute.value;
+  			newValue = binding.getValue();
+
+  			if (!arrayContentsMatch(oldValue, newValue)) {
+  				values[keypath.str] = newValue;
+  			}
+  		});
+  	}
+
+  	return values;
+  }
+
+  var prototype = {
+  	add: prototype_add,
+  	animate: prototype_animate,
+  	detach: prototype_detach,
+  	find: prototype_find,
+  	findAll: prototype_findAll,
+  	findAllComponents: prototype_findAllComponents,
+  	findComponent: prototype_findComponent,
+  	findContainer: findContainer,
+  	findParent: findParent,
+  	fire: prototype_fire,
+  	get: prototy
