@@ -14157,4 +14157,12 @@
   var FUNCTION = "function";
 
   if (typeof Date.now !== FUNCTION || typeof String.prototype.trim !== FUNCTION || typeof Object.keys !== FUNCTION || typeof Array.prototype.indexOf !== FUNCTION || typeof Array.prototype.forEach !== FUNCTION || typeof Array.prototype.map !== FUNCTION || typeof Array.prototype.filter !== FUNCTION || typeof window !== "undefined" && typeof window.addEventListener !== FUNCTION) {
-  	throw new Error("It looks like you're attempting to use Ractive.js in an older browser. You'll
+  	throw new Error("It looks like you're attempting to use Ractive.js in an older browser. You'll need to use one of the 'legacy builds' in order to continue - see http://docs.ractivejs.org/latest/legacy-builds for more information.");
+  }
+
+  var _Ractive = Ractive;
+
+  return _Ractive;
+
+}));
+//# sourceMappingURL=ractive.runtime.js.map
