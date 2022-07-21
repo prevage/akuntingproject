@@ -13878,4 +13878,283 @@
   	findContainer: findContainer,
   	findParent: findParent,
   	fire: prototype_fire,
-  	get: prototy
+  	get: prototype_get,
+  	insert: insert,
+  	merge: prototype_merge,
+  	observe: observe,
+  	observeOnce: observeOnce,
+  	off: off,
+  	on: on,
+  	once: once,
+  	pop: pop,
+  	push: push,
+  	render: prototype_render,
+  	reset: prototype_reset,
+  	resetPartial: resetPartial,
+  	resetTemplate: resetTemplate,
+  	reverse: reverse,
+  	set: Ractive_prototype_set,
+  	shift: shift,
+  	sort: prototype_sort,
+  	splice: splice,
+  	subtract: subtract,
+  	teardown: Ractive_prototype_teardown,
+  	toggle: toggle,
+  	toHTML: toHTML,
+  	toHtml: toHTML,
+  	unrender: Ractive_prototype_unrender,
+  	unshift: unshift,
+  	update: Ractive_prototype_update,
+  	updateModel: prototype_updateModel
+  };
+
+  var wrapMethod = function (method, superMethod, force) {
+
+  	if (force || needsSuper(method, superMethod)) {
+
+  		return function () {
+
+  			var hasSuper = ("_super" in this),
+  			    _super = this._super,
+  			    result;
+
+  			this._super = superMethod;
+
+  			result = method.apply(this, arguments);
+
+  			if (hasSuper) {
+  				this._super = _super;
+  			}
+
+  			return result;
+  		};
+  	} else {
+  		return method;
+  	}
+  };
+
+  function needsSuper(method, superMethod) {
+  	return typeof superMethod === "function" && /_super/.test(method);
+  }
+
+  var unwrapExtended = unwrap;
+
+  function unwrap(Child) {
+  	var options = {};
+
+  	while (Child) {
+  		addRegistries(Child, options);
+  		addOtherOptions(Child, options);
+
+  		if (Child._Parent !== _Ractive) {
+  			Child = Child._Parent;
+  		} else {
+  			Child = false;
+  		}
+  	}
+
+  	return options;
+  }
+
+  function addRegistries(Child, options) {
+  	config_registries.forEach(function (r) {
+  		addRegistry(r.useDefaults ? Child.prototype : Child, options, r.name);
+  	});
+  }
+
+  function addRegistry(target, options, name) {
+  	var registry,
+  	    keys = Object.keys(target[name]);
+
+  	if (!keys.length) {
+  		return;
+  	}
+
+  	if (!(registry = options[name])) {
+  		registry = options[name] = {};
+  	}
+
+  	keys.filter(function (key) {
+  		return !(key in registry);
+  	}).forEach(function (key) {
+  		return registry[key] = target[name][key];
+  	});
+  }
+
+  function addOtherOptions(Child, options) {
+  	Object.keys(Child.prototype).forEach(function (key) {
+  		if (key === "computed") {
+  			return;
+  		}
+
+  		var value = Child.prototype[key];
+
+  		if (!(key in options)) {
+  			options[key] = value._method ? value._method : value;
+  		}
+
+  		// is it a wrapped function?
+  		else if (typeof options[key] === "function" && typeof value === "function" && options[key]._method) {
+
+  			var result = undefined,
+  			    needsSuper = value._method;
+
+  			if (needsSuper) {
+  				value = value._method;
+  			}
+
+  			// rewrap bound directly to parent fn
+  			result = wrapMethod(options[key]._method, value);
+
+  			if (needsSuper) {
+  				result._method = result;
+  			}
+
+  			options[key] = result;
+  		}
+  	});
+  }
+
+  var _extend = _extend__extend;
+
+  function _extend__extend() {
+  	for (var _len = arguments.length, options = Array(_len), _key = 0; _key < _len; _key++) {
+  		options[_key] = arguments[_key];
+  	}
+
+  	if (!options.length) {
+  		return extendOne(this);
+  	} else {
+  		return options.reduce(extendOne, this);
+  	}
+  }
+
+  function extendOne(Parent) {
+  	var options = arguments[1] === undefined ? {} : arguments[1];
+
+  	var Child, proto;
+
+  	// if we're extending with another Ractive instance...
+  	//
+  	//   var Human = Ractive.extend(...), Spider = Ractive.extend(...);
+  	//   var Spiderman = Human.extend( Spider );
+  	//
+  	// ...inherit prototype methods and default options as well
+  	if (options.prototype instanceof _Ractive) {
+  		options = unwrapExtended(options);
+  	}
+
+  	Child = function (options) {
+  		if (!(this instanceof Child)) return new Child(options);
+  		initialise(this, options);
+  	};
+
+  	proto = create(Parent.prototype);
+  	proto.constructor = Child;
+
+  	// Static properties
+  	defineProperties(Child, {
+  		// alias prototype as defaults
+  		defaults: { value: proto },
+
+  		// extendable
+  		extend: { value: _extend__extend, writable: true, configurable: true },
+
+  		// Parent - for IE8, can't use Object.getPrototypeOf
+  		_Parent: { value: Parent }
+  	});
+
+  	// extend configuration
+  	config_config.extend(Parent, proto, options);
+
+  	custom_data.extend(Parent, proto, options);
+
+  	if (options.computed) {
+  		proto.computed = utils_object__extend(create(Parent.prototype.computed), options.computed);
+  	}
+
+  	Child.prototype = proto;
+
+  	return Child;
+  }
+
+  var getNodeInfo = function (node) {
+  	var info = {},
+  	    priv,
+  	    indices;
+
+  	if (!node || !(priv = node._ractive)) {
+  		return info;
+  	}
+
+  	info.ractive = priv.root;
+  	info.keypath = priv.keypath.str;
+  	info.index = {};
+
+  	// find all index references and resolve them
+  	if (indices = Resolvers_findIndexRefs(priv.proxy.parentFragment)) {
+  		info.index = Resolvers_findIndexRefs.resolve(indices);
+  	}
+
+  	return info;
+  };
+
+  var Ractive, properties;
+
+  // Main Ractive required object
+  Ractive = function (options) {
+  	if (!(this instanceof Ractive)) return new Ractive(options);
+  	initialise(this, options);
+  };
+
+  // Ractive properties
+  properties = {
+
+  	// debug flag
+  	DEBUG: { writable: true, value: true },
+  	DEBUG_PROMISES: { writable: true, value: true },
+
+  	// static methods:
+  	extend: { value: _extend },
+  	getNodeInfo: { value: getNodeInfo },
+  	parse: { value: parse },
+
+  	// Namespaced constructors
+  	Promise: { value: utils_Promise },
+
+  	// support
+  	svg: { value: svg },
+  	magic: { value: environment__magic },
+
+  	// version
+  	VERSION: { value: "0.7.3" },
+
+  	// Plugins
+  	adaptors: { writable: true, value: {} },
+  	components: { writable: true, value: {} },
+  	decorators: { writable: true, value: {} },
+  	easing: { writable: true, value: static_easing },
+  	events: { writable: true, value: {} },
+  	interpolators: { writable: true, value: static_interpolators },
+  	partials: { writable: true, value: {} },
+  	transitions: { writable: true, value: {} }
+  };
+
+  // Ractive properties
+  defineProperties(Ractive, properties);
+
+  Ractive.prototype = utils_object__extend(prototype, config_defaults);
+
+  Ractive.prototype.constructor = Ractive;
+
+  // alias prototype as defaults
+  Ractive.defaults = Ractive.prototype;
+
+  // Ractive.js makes liberal use of things like Array.prototype.indexOf. In
+  // older browsers, these are made available via a shim - here, we do a quick
+  // pre-flight check to make sure that either a) we're not in a shit browser,
+  // or b) we're using a Ractive-legacy.js build
+  var FUNCTION = "function";
+
+  if (typeof Date.now !== FUNCTION || typeof String.prototype.trim !== FUNCTION || typeof Object.keys !== FUNCTION || typeof Array.prototype.indexOf !== FUNCTION || typeof Array.prototype.forEach !== FUNCTION || typeof Array.prototype.map !== FUNCTION || typeof Array.prototype.filter !== FUNCTION || typeof window !== "undefined" && typeof window.addEventListener !== FUNCTION) {
+  	throw new Error("It looks like you're attempting to use Ractive.js in an older browser. You'll
